@@ -12,3 +12,10 @@ kernel void rngrngrng(global uint* data)
 		data[(47 * (id + i)) % N] = data[(27 * (id + i)) % N];
 	}
 }
+
+kernel void move(global float* positions)
+{
+	uint id = get_global_id(0);
+	
+	positions[id*3+1] = positions[id*3+1] + 0.01f;
+}
