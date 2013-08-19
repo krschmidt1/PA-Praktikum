@@ -10,3 +10,5 @@ bin/*
 .classpath
 
 lwjgl*/*
+
+*.log
