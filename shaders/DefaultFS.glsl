@@ -9,7 +9,7 @@ void main(void)
 {
 	// make round particles
 	if( dot(gl_PointCoord * 2.0f - 1.0f, 
-			gl_PointCoord * 2.0f - 1.0f) >1.0f )
+			gl_PointCoord * 2.0f - 1.0f) > 1.0f )
 		discard;
 		
 		

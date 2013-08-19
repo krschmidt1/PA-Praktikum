@@ -11,6 +11,7 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.util.vector.Matrix4f;
 
 import particle.Particle;
+import particle.ParticleFactory;
 
 public class MainProgram {
 	private boolean running = true;
@@ -27,6 +28,7 @@ public class MainProgram {
 	public MainProgram() {
 		initGL();
 		particle = new Particle(0.0f, 0.0f, 0.0f);
+		ParticleFactory.addParticle(particle);
 	}
 	
 	public void run() {
@@ -68,9 +70,11 @@ public class MainProgram {
 //		shaderProgram.setUniform("modelIT", modelIT);
 		shaderProgram.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
 		shaderProgram.setUniform("camPos", cam.getCamPos());
-        
+
+		particle.getPosition().x += 0.1f;
 		// draws
-        particle.draw();
+		ParticleFactory.updateData();
+        ParticleFactory.draw();
         
         // present screen
         Display.update();
