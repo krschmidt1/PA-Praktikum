@@ -15,19 +15,43 @@ import pa.cl.OpenCL;
 import pa.cl.CLUtil.PlatformDevicePair;
 import pa.util.IOUtil;
 import pa.util.SizeOf;
+
+import opengl.GL;
+import static opengl.GL.*;
+import opengl.util.Camera;
+import opengl.util.ShaderProgram;
+
+import org.lwjgl.LWJGLException;
+import org.lwjgl.opengl.Display;
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.util.vector.Matrix4f;
+
 import particle.Particle;
 
 public class MainProgram {
 	private boolean running = true;
 	
+	////// OPENCL BLOCK
 	private CLContext context;
 	private CLCommandQueue queue;
 	private CLProgram program;
 	private CLKernel kernel;
 	private CLMem mem;
+
+	////// OPENGL BLOCK
+	private ShaderProgram shaderProgram  = null;
+	private Matrix4f modelMat = new Matrix4f();
+	private Matrix4f modelIT  = opengl.util.Util.transposeInverse(modelMat, null);
+	private Camera   cam      = new Camera();
+	
+	////// Particles
+	private Particle particle = null;
 	private Particle[] particles;
+
 	
 	public MainProgram() {
+		initGL();
+		particle = new Particle(0.0f, 0.0f, 0.0f);
 	}
 	
 	public void run() {
@@ -60,11 +84,12 @@ public class MainProgram {
         
         OpenCL.clSetKernelArg(kernel, 0, mem);
 
-        int count = 0;
-		while(running && count < 10) {
+//        int count = 0;
+//		while(running && count < 10) {
+		while(running) {
 			// TODO
         
-			count++;
+//			count++;
 			
 	        PointerBuffer gws = new PointerBuffer(elements);
 	        gws.put(0, elements);
@@ -84,10 +109,17 @@ public class MainProgram {
 	        	if(i%3==2) System.out.print("    ");
 	        }
         	System.out.println();
-	        
-//			stop();
+		
+			
+			drawScene();
+            
+            // if close is requested: close
+			if(Display.isCloseRequested()) {
+				stop();
+			}
+
 		}
-		stop();
+//		stop();
 	}
 	
 	public void initCL() {
@@ -118,5 +150,37 @@ public class MainProgram {
         OpenCL.clReleaseContext(context);
         
         CLUtil.destroyCL();
+
+		GL.destroy();
+	}
+	
+	public void initGL() {
+		try {
+			GL.init();
+		} catch (LWJGLException e) {
+			e.printStackTrace();
+		}
+		System.out.println("test1.1");
+		shaderProgram = new ShaderProgram("shaders/DefaultVS.glsl", "shaders/DefaultFS.glsl");
+		
+		glClearColor(0.0f, 0.3f, 0.0f, 1.0f);
+	}
+	
+	public void drawScene() {
+		// OPENGL BLOCK
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		
+		shaderProgram.use();
+		shaderProgram.setUniform("model", modelMat);
+//		shaderProgram.setUniform("modelIT", modelIT);
+		shaderProgram.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
+		shaderProgram.setUniform("camPos", cam.getCamPos());
+        
+		// draws
+        particle.draw();
+        
+        // present screen
+        Display.update();
+        Display.sync(60);
 	}
 }
