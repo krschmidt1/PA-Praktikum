@@ -91,4 +91,8 @@ public class MathUtil
         }
         return RANDOM;
     }
+    
+    public static float sqrt(float f) {
+    	return (float)Math.sqrt(f);
+    }
 }
