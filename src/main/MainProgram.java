@@ -6,6 +6,7 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
+import org.lwjgl.opencl.CL10;
 import org.lwjgl.opencl.CLCommandQueue;
 import org.lwjgl.opencl.CLContext;
 import org.lwjgl.opencl.CLKernel;
@@ -14,6 +15,7 @@ import org.lwjgl.opencl.CLProgram;
 
 import pa.cl.CLUtil;
 import pa.cl.OpenCL;
+import pa.cl.CLUtil.PlatformDeviceFilter;
 import pa.cl.CLUtil.PlatformDevicePair;
 import pa.util.IOUtil;
 import pa.util.SizeOf;
@@ -193,8 +195,21 @@ public class MainProgram {
 
 		CLUtil.createCL();
 		
-		PlatformDevicePair pair = CLUtil.choosePlatformAndDevice();
+		PlatformDevicePair pair;
 		
+		try {
+			PlatformDeviceFilter filter = new PlatformDeviceFilter();
+	        
+	        //set spec here
+	        filter.addPlatformSpec(CL10.CL_PLATFORM_VENDOR, "NVIDIA");
+	        filter.setDesiredDeviceType(CL10.CL_DEVICE_TYPE_GPU);
+	        	
+	        //query platform and device
+	        pair = CLUtil.choosePlatformAndDevice(filter);
+		}catch(Exception e) {
+			pair = CLUtil.choosePlatformAndDevice();
+		}
+        
 		context = OpenCL.clCreateContext(pair.platform, pair.device, null, Display.getDrawable());
         
 		queue = OpenCL.clCreateCommandQueue(context, pair.device, OpenCL.CL_QUEUE_PROFILING_ENABLE);
