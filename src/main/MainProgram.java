@@ -29,7 +29,6 @@ import org.lwjgl.LWJGLException;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.util.vector.Matrix4f;
 
-import particle.Particle;
 import particle.ParticleFactory;
 import opengl.util.FrameBuffer;
 import opengl.util.Texture;
@@ -45,90 +44,49 @@ public class MainProgram {
 	private int elements = 1<<8; // 2^n = 1<<n 
 
 	////// OPENCL BLOCK
-	private CLContext context;
-	private CLCommandQueue queue;
-	private CLProgram program;
-	private CLKernel kernelMove;
-	private CLMem memPositions;
-	private CLMem memLifetime;
+	private CLContext context    = null;
+	private CLCommandQueue queue = null;
+	private CLProgram program    = null;
+	private CLKernel kernelMove  = null;
+	private CLMem memPositions   = null;
+	private CLMem memLifetime    = null;
 
-	////// OPENGL BLOCK
-	private ShaderProgram shaderProgram  = null;
+	////// OPENGL BLOCK + DEFERRED SHADING
 	private Matrix4f modelMat = new Matrix4f();
-//	private Matrix4f modelIT  = opengl.util.Util.transposeInverse(modelMat, null);
 	private Camera   cam      = new Camera();
 	private int vertexArrayID = -1;
 	
-	////// other
-	private long lastTimestamp = System.currentTimeMillis();
-	private int numberOfFrames = 0;
-	
-	////// deferred shading
-	private Geometry screenQuad;
+	private Geometry screenQuad = null;
+	private ShaderProgram screenQuadSP = null;
+
 	private int textureUnit = 0;
-	private ShaderProgram depthSP;
-    private FrameBuffer depthFB;
-    private Texture depthTex;
-    private Texture depth2Tex;
-    private Texture depth3Tex;
-    private ShaderProgram drawTextureSP;
-	
-	
-	
-	
+	private ShaderProgram depthSP = null;
+	private FrameBuffer depthFB   = null;
+	private Texture depthTex      = null;
+
+	////// other
+	private long lastTimestamp  = System.currentTimeMillis();
+	private int  numberOfFrames = 0;
 	
 	public MainProgram() {
-		initGL();
+	    initGL();
 		initCL();
-
-		
-
-		screenQuad = GeometryFactory.createScreenQuad();
-//		depthSP = new ShaderProgram("./shader/Depth_VS.glsl", "./shader/Depth_FS.glsl");
-		drawTextureSP = new ShaderProgram("shader/ScreenQuad_VS.glsl", "shader/CopyTexture_FS.glsl");
-		depthSP = new ShaderProgram("./shader/DefaultVS.glsl", "./shader/Default1FS.glsl");
-	    depthFB = new FrameBuffer();
-	    depthTex  = new Texture(GL_TEXTURE_2D, textureUnit++);
-	    depth2Tex = new Texture(GL_TEXTURE_2D, textureUnit++);
-	    depth3Tex = new Texture(GL_TEXTURE_2D, textureUnit++);
-    	
-	    initFrameBuffer(depthFB, depthSP, new Texture[]{depthTex}, new String[]{"depth"}, false, true);
-	    depthSP.use();
 	    initParticles();
 	}
 	
-	
-	private void initFrameBuffer(FrameBuffer fb, ShaderProgram sp, Texture[] textures, String[] names, boolean low, boolean depthTest) {
-		fb.init(depthTest, WIDTH/(low?2:1), HEIGHT/(low?2:1));
-		for(Texture tex: textures) {
-			fb.addTexture(tex, GL_RGBA16F, GL_RGBA);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		}
-		fb.drawBuffers();
-
-		fb.bind();
-		fb.clearColor();
-		for(int i = 0; i < names.length; i++) {
-			glBindFragDataLocation(sp.getId(), i, names[i]);
-		}
-		
-
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	}
-	
-	
 	private void initParticles() {
-		glBindVertexArray(vertexArrayID);
-		bufferObjectPositions = glGenBuffers();
+	    // vertex array for particles (the screen quad uses a different one)
+	    // TODO: both in one vertexarray?
+	    vertexArrayID = glGenVertexArrays();
+        glBindVertexArray(vertexArrayID);
 
 		// generate particles
 		for(int i = 0; i < elements; i++) {
 			ParticleFactory.createParticle();
 		}
 
+		// positions
 		FloatBuffer particlePositions = ParticleFactory.getParticlePositions();
-
 		bufferObjectPositions = glGenBuffers();
 		glBindBuffer(GL_ARRAY_BUFFER, bufferObjectPositions);
 		glBufferData(GL_ARRAY_BUFFER, particlePositions, GL_STATIC_DRAW);
@@ -136,8 +94,8 @@ public class MainProgram {
         glEnableVertexAttribArray(ShaderProgram.ATTR_POS);
         glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3 * SizeOf.FLOAT, 0);
         
+        // lifetimes TODO
         FloatBuffer particleLifetimes = ParticleFactory.getParticleLifetime();
-        
         bufferObjectLifetimes = glGenBuffers();
         glBindBuffer(GL_ARRAY_BUFFER, bufferObjectLifetimes);
         glBufferData(GL_ARRAY_BUFFER, particleLifetimes, GL_STATIC_DRAW);
@@ -145,17 +103,14 @@ public class MainProgram {
         glEnableVertexAttribArray(ShaderProgram.ATTR_NORMAL);
         glVertexAttribPointer(ShaderProgram.ATTR_NORMAL, 2, GL_FLOAT, false, 2 * SizeOf.FLOAT, 0);
         
-        
-        
-        
 	}
 
 	public void run() {
 		System.out.println("Running with " + elements + " Particles.");
 		
-		// push OpenGL Buffer to OpenCL
+		// push OpenGL Buffer to OpenCL TODO
 		memPositions = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectPositions);
-		memLifetime = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectLifetimes);
+		memLifetime  = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectLifetimes);
 		
         OpenCL.clSetKernelArg(kernelMove, 0, memPositions);
         OpenCL.clSetKernelArg(kernelMove, 1, memLifetime);
@@ -170,8 +125,12 @@ public class MainProgram {
 			
 			handleInput(deltaTime);
 			
-			OpenCL.clSetKernelArg(kernelMove, 2, (int)deltaTime);
 			
+			// TODO
+			// TODO
+			// TODO
+			
+			OpenCL.clSetKernelArg(kernelMove, 2, (int)deltaTime);
 			
 			OpenCL.clEnqueueAcquireGLObjects(queue, memPositions, null, null);
 			OpenCL.clEnqueueAcquireGLObjects(queue, memLifetime, null, null);
@@ -191,48 +150,111 @@ public class MainProgram {
 		}
 	}
 	
-	public void initCL() {
+	public void drawScene() {
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		
+		// post effects etc
+		depthSP.use();
+		depthSP.setUniform("model", modelMat);
+		depthSP.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
+        depthSP.setUniform("camPos", cam.getCamPos());
 
-		CLUtil.createCL();
-		
-		PlatformDevicePair pair;
-		
-		try {
-			PlatformDeviceFilter filter = new PlatformDeviceFilter();
-	        
-	        //set spec here
-	        filter.addPlatformSpec(CL10.CL_PLATFORM_VENDOR, "NVIDIA");
-	        filter.setDesiredDeviceType(CL10.CL_DEVICE_TYPE_GPU);
-	        	
-	        //query platform and device
-	        pair = CLUtil.choosePlatformAndDevice(filter);
-		}catch(Exception e) {
-			pair = CLUtil.choosePlatformAndDevice();
-		}
+        depthFB.bind();
+        depthFB.clearColor();
         
-		context = OpenCL.clCreateContext(pair.platform, pair.device, null, Display.getDrawable());
+        glBindVertexArray(vertexArrayID);
+        ParticleFactory.draw();
+		
+		
+		
+		// draw texture on screenquad
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		screenQuadSP.use();        
+		screenQuadSP.setUniform("image", depthTex);
+		screenQuad.draw();
+		
+        // present screen
+        Display.update();
+        Display.sync(60);
+	}
+	
+	private void handleInput(long deltaTime) {
+        float speed = 5e-6f * deltaTime;
+            
+        while(Mouse.next()) {
+            if(Mouse.isButtonDown(0)) {
+                cam.rotate(-speed*Mouse.getEventDX(), -speed*Mouse.getEventDY());
+            }
+        }
+    }
+	
+	public void initGL() {
+        try {
+            GL.init();
+        } catch (LWJGLException e) {
+            e.printStackTrace();
+        }
         
-		queue = OpenCL.clCreateCommandQueue(context, pair.device, OpenCL.CL_QUEUE_PROFILING_ENABLE);
-		// for out of order queue: OpenCL.CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE
+        // screenQuad
+        screenQuad   = GeometryFactory.createScreenQuad();
+        screenQuadSP = new ShaderProgram("shader/ScreenQuad_VS.glsl", "shader/CopyTexture_FS.glsl");
+        
+        // first renderpath: "depth"
+        depthSP = new ShaderProgram("./shader/DefaultVS.glsl", "./shader/Default1FS.glsl");
+        depthSP.use();
+        
+        depthFB = new FrameBuffer();
+        depthFB.init(true, WIDTH, HEIGHT);
+
+        depthTex = new Texture(GL_TEXTURE_2D, textureUnit++);
+        depthFB.addTexture(depthTex, GL_RGBA16F, GL_RGBA);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFragDataLocation(depthSP.getId(), 0, "depth");
+        
+        glClearColor(0.1f, 0.0f, 0.4f, 1.0f);
+    }
+	
+	public void initCL() {
+        CLUtil.createCL();
+        
+        PlatformDevicePair pair = null;
+        try {
+            PlatformDeviceFilter filter = new PlatformDeviceFilter();
+            
+            // set spec here
+            filter.addPlatformSpec(CL10.CL_PLATFORM_VENDOR, "NVIDIA");
+            filter.setDesiredDeviceType(CL10.CL_DEVICE_TYPE_GPU);
+                
+            // query platform and device
+            pair = CLUtil.choosePlatformAndDevice(filter);
+        }catch(Exception e) {
+            pair = CLUtil.choosePlatformAndDevice();
+        }
+        
+        context = OpenCL.clCreateContext(pair.platform, pair.device, null, Display.getDrawable());
+        queue   = OpenCL.clCreateCommandQueue(context, pair.device, OpenCL.CL_QUEUE_PROFILING_ENABLE);
+        // for out of order queue: OpenCL.CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE
         
         program = OpenCL.clCreateProgramWithSource(context, IOUtil.readFileContent("kernel/kernel.cl"));
-        
         OpenCL.clBuildProgram(program, pair.device, "", null);
         
         kernelMove = OpenCL.clCreateKernel(program, "move");
-        
-	}
+        // TODO other kernels
+    }
 	
 	public void stop() {
-		running = false;
-		
-//		shaderProgram.delete();
-		
-		if(!Display.isCloseRequested())  {
-			Display.destroy();
-		}
-		
-		OpenCL.clReleaseMemObject(memLifetime);
+        running = false;
+        
+        screenQuadSP.delete();
+        depthSP.delete();
+        // TODO cleanup (possible) additional sps
+        
+        if(!Display.isCloseRequested())  {
+            Display.destroy();
+        }
+        
+        OpenCL.clReleaseMemObject(memLifetime);
         OpenCL.clReleaseMemObject(memPositions);
         OpenCL.clReleaseKernel(kernelMove);
         OpenCL.clReleaseProgram(program);
@@ -241,70 +263,8 @@ public class MainProgram {
         
         CLUtil.destroyCL();
         
-		GL.destroy();
-	}
-	
-	public void initGL() {
-		try {
-			GL.init();
-		} catch (LWJGLException e) {
-			e.printStackTrace();
-		}
-//		shaderProgram = new ShaderProgram("shader/DefaultVS.glsl", "shader/DefaultFS.glsl");
-		
-		glClearColor(0.1f, 0.0f, 0.4f, 1.0f);
-		
-		vertexArrayID = glGenVertexArrays();
-		glBindVertexArray(vertexArrayID);
-	}
-	
-	public void drawScene() {
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		
-//		shaderProgram.use();
-//		shaderProgram.setUniform("model", modelMat);
-////		shaderProgram.setUniform("modelIT", modelIT);
-//		shaderProgram.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
-//		shaderProgram.setUniform("camPos", cam.getCamPos());
-
-
-//        FloatBuffer floatBuffer = BufferUtils.createFloatBuffer(4);
-//        floatBuffer.put(new float[]{1.0f, 1.0f, 0.0f, 0.0f});
-//        floatBuffer.position(0);
-//        glPointParameter(GL_POINT_DISTANCE_ATTENUATION, floatBuffer);
-//
-//		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		
-		depthSP.use();
-		depthSP.setUniform("model", modelMat);
-		depthSP.setUniform("view", cam.getView());
-		depthSP.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
-		depthSP.setUniform("viewDistance", 1e+2f);
-        depthSP.setUniform("camPos", cam.getCamPos());
-        depthSP.setUniform("size", 20.0f);
-
-        depthFB.bind();
-        depthFB.clearColor();
-        glBindVertexArray(vertexArrayID);
-        ParticleFactory.draw();
-
-//        glDisable(GL_BLEND);
-//        glEnable(GL_DEPTH_TEST);
-
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        
-
-        drawTextureSP.use();        
-		drawTextureSP.setUniform("image", depthTex);
-		screenQuad.draw();
-        
-		
-		
-		
-        // present screen
-        Display.update();
-        Display.sync(60);
-	}
+        GL.destroy();
+    }
 	
 	private void calculateFramesPerSecond(long deltaTime) {
 		numberOfFrames++;
@@ -336,13 +296,4 @@ public class MainProgram {
 	}
 	
 	
-	private void handleInput(long deltaTime) {
-		float speed = 5e-6f * deltaTime;
-			
-		while(Mouse.next()) {
-            if(Mouse.isButtonDown(0)) {
-                cam.rotate(-speed*Mouse.getEventDX(), -speed*Mouse.getEventDY());
-            }
-        }
-	}
 }
