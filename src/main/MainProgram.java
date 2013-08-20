@@ -28,6 +28,10 @@ import org.lwjgl.util.vector.Matrix4f;
 
 import particle.Particle;
 import particle.ParticleFactory;
+import opengl.util.FrameBuffer;
+import opengl.util.Texture;
+import opengl.util.Geometry;
+import opengl.util.GeometryFactory;
 
 public class MainProgram {
 	private boolean running = true;
@@ -54,17 +58,65 @@ public class MainProgram {
 	private long lastTimestamp = System.currentTimeMillis();
 	private int numberOfFrames = 0;
 	
+	////// deferred shading
+	private Geometry screenQuad;
+	private int textureUnit = 0;
+	private ShaderProgram depthSP;
+    private FrameBuffer depthFB;
+    private Texture depthTex;
+    private Texture depth2Tex;
+    private Texture depth3Tex;
+    private ShaderProgram drawTextureSP;
+	
+	
+	
+	
+	
 	public MainProgram() {
 		initGL();
 		initCL();
 
-		initParticles();
+		
+
+		screenQuad = GeometryFactory.createScreenQuad();
+//		depthSP = new ShaderProgram("./shader/Depth_VS.glsl", "./shader/Depth_FS.glsl");
+		drawTextureSP = new ShaderProgram("shader/ScreenQuad_VS.glsl", "shader/CopyTexture_FS.glsl");
+		depthSP = new ShaderProgram("./shader/DefaultVS.glsl", "./shader/Default1FS.glsl");
+	    depthFB = new FrameBuffer();
+	    depthTex  = new Texture(GL_TEXTURE_2D, textureUnit++);
+	    depth2Tex = new Texture(GL_TEXTURE_2D, textureUnit++);
+	    depth3Tex = new Texture(GL_TEXTURE_2D, textureUnit++);
+    	
+	    initFrameBuffer(depthFB, depthSP, new Texture[]{depthTex}, new String[]{"depth"}, false, true);
+	    depthSP.use();
+	    initParticles();
 	}
 	
+	
+	private void initFrameBuffer(FrameBuffer fb, ShaderProgram sp, Texture[] textures, String[] names, boolean low, boolean depthTest) {
+		fb.init(depthTest, WIDTH/(low?2:1), HEIGHT/(low?2:1));
+		for(Texture tex: textures) {
+			fb.addTexture(tex, GL_RGBA16F, GL_RGBA);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		}
+		fb.drawBuffers();
+
+		fb.bind();
+		fb.clearColor();
+		for(int i = 0; i < names.length; i++) {
+			glBindFragDataLocation(sp.getId(), i, names[i]);
+		}
+		
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
+	
+	
 	private void initParticles() {
+		glBindVertexArray(vertexArrayID);
 		bufferObject = glGenBuffers();
 		
-		glBindBuffer(GL_ARRAY_BUFFER, bufferObject);
 
 		// generate particles
 		for(int i = 0; i < elements; i++) {
@@ -72,10 +124,14 @@ public class MainProgram {
 		}
 		FloatBuffer particleData = ParticleFactory.getParticleData();
 		
+		glBindBuffer(GL_ARRAY_BUFFER, bufferObject);
 		glBufferData(GL_ARRAY_BUFFER, particleData, GL_STATIC_DRAW);
 		
         glEnableVertexAttribArray(ShaderProgram.ATTR_POS);
         glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3*4, 0);
+        
+        
+        
         
 	}
 
@@ -155,7 +211,7 @@ public class MainProgram {
 		} catch (LWJGLException e) {
 			e.printStackTrace();
 		}
-		shaderProgram = new ShaderProgram("shaders/DefaultVS.glsl", "shaders/DefaultFS.glsl");
+//		shaderProgram = new ShaderProgram("shader/DefaultVS.glsl", "shader/DefaultFS.glsl");
 		
 		glClearColor(0.1f, 0.0f, 0.4f, 1.0f);
 		
@@ -166,14 +222,46 @@ public class MainProgram {
 	public void drawScene() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		
-		shaderProgram.use();
-		shaderProgram.setUniform("model", modelMat);
-//		shaderProgram.setUniform("modelIT", modelIT);
-		shaderProgram.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
-		shaderProgram.setUniform("camPos", cam.getCamPos());
+//		shaderProgram.use();
+//		shaderProgram.setUniform("model", modelMat);
+////		shaderProgram.setUniform("modelIT", modelIT);
+//		shaderProgram.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
+//		shaderProgram.setUniform("camPos", cam.getCamPos());
 
+
+//        FloatBuffer floatBuffer = BufferUtils.createFloatBuffer(4);
+//        floatBuffer.put(new float[]{1.0f, 1.0f, 0.0f, 0.0f});
+//        floatBuffer.position(0);
+//        glPointParameter(GL_POINT_DISTANCE_ATTENUATION, floatBuffer);
+//
+//		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		
+		depthSP.use();
+		depthSP.setUniform("model", modelMat);
+		depthSP.setUniform("view", cam.getView());
+		depthSP.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
+		depthSP.setUniform("viewDistance", 1e+2f);
+        depthSP.setUniform("camPos", cam.getCamPos());
+        depthSP.setUniform("size", 20.0f);
+
+        depthFB.bind();
+        depthFB.clearColor();
+        glBindVertexArray(vertexArrayID);
         ParticleFactory.draw();
+
+//        glDisable(GL_BLEND);
+//        glEnable(GL_DEPTH_TEST);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
         
+
+        drawTextureSP.use();        
+		drawTextureSP.setUniform("image", depthTex);
+		screenQuad.draw();
+        
+		
+		
+		
         // present screen
         Display.update();
         Display.sync(60);

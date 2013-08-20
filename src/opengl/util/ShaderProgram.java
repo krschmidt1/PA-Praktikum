@@ -1,6 +1,7 @@
 package opengl.util;
 
 import static opengl.GL.*;
+
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.util.vector.Matrix4f;
 import org.lwjgl.util.vector.Vector3f;
@@ -10,15 +11,22 @@ import org.lwjgl.util.vector.Vector3f;
  * @author nico3000
  */
 public class ShaderProgram {
+	private final boolean DEBUG = false;
     private int id, vs, fs;
-    
+    private String vertexShader, fragmentShader;
     public ShaderProgram(String vertexShader, String fragmentShader) {
         this.createShaderProgram(vertexShader, fragmentShader);
+        this.vertexShader = vertexShader;
+        this.fragmentShader = fragmentShader;
     }
     
     public void use() {
         glUseProgram(this.id);
     }            
+    
+    public int getID(){
+    	return this.id;
+    }
     
     /**
      * Hilfsmethode, um eine Matrix in eine Uniform zu schreiben. Das
@@ -35,14 +43,56 @@ public class ShaderProgram {
             glUniformMatrix4(loc, false, Util.MAT_BUFFER);
             Util.MAT_BUFFER.position(0);
         } else {
-            System.err.println("location of " + varName + " is -1");
-        }            
+        	if(DEBUG)
+        		System.err.println("Uniform4f: "+ varName +", ShaderProgram: "+this.id+",\n VertexShader: " + vertexShader + ", FragmentShader: " + fragmentShader);
+        }
     }
     
+    /**
+     * Hilfsmethode, um einen Vektor in eine Uniform zu schreiben. Das
+     * zugehoerige Programmobjekt muss aktiv sein.
+     * @param vector Vektor
+     * @param varName Zielvariable im Shader
+     */
     public void setUniform(String varName, Vector3f vector) {
         int loc = glGetUniformLocation(this.id, varName);
         if(loc != -1) {
             glUniform3f(loc, vector.x, vector.y, vector.z);
+        }else {
+        	if(DEBUG)
+        		System.err.println("Uniform3f: "+ varName +", ShaderProgram: "+this.id+",\n VertexShader: " + vertexShader + ", FragmentShader: " + fragmentShader);
+        }
+    }
+    
+    /**
+     * Hilfsmethode, um einen Float in eine Uniform zu schreiben. Das
+     * zugehoerige Programmobjekt muss aktiv sein.
+     * @param f Float
+     * @param varName Zielvariable im Shader
+     */
+    public void setUniform(String varName, float f) {
+        int loc = glGetUniformLocation(this.id, varName);
+        if(loc != -1) {
+            glUniform1f(loc, f);
+        }else {
+        	if(DEBUG)
+        		System.err.println("Uniform1f: "+ varName +", ShaderProgram: "+this.id+",\n VertexShader: " + vertexShader + ", FragmentShader: " + fragmentShader);
+        }
+    }
+    
+    /**
+     * Hilfsmethode, um einen Integer in eine Uniform zu schreiben. Das
+     * zugehoerige Programmobjekt muss aktiv sein.
+     * @param i Integer
+     * @param varName Zielvariable im Shader
+     */
+    public void setUniform(String varName, int i) {
+        int loc = glGetUniformLocation(this.id, varName);
+        if(loc != -1) {
+            glUniform1i(loc, i);
+        }else {
+        	if(DEBUG)
+        		System.err.println("Uniform1i: "+ varName +", ShaderProgram: "+this.id+",\n VertexShader: " + vertexShader + ", FragmentShader: " + fragmentShader);
         }
     }
     
@@ -57,9 +107,10 @@ public class ShaderProgram {
         if(loc != -1) {
             texture.bind();
             glUniform1i(loc, texture.getUnit());
-        } else {
-            System.err.println("location of " + varName + " is -1");
-        }            
+        }else {
+        	if(DEBUG)
+        		System.err.println("UniformTex: "+ varName +", ShaderProgram: "+this.id+",\n VertexShader: " + vertexShader + ", FragmentShader: " + fragmentShader);
+        }
     }
     
     /**
@@ -143,6 +194,10 @@ public class ShaderProgram {
         GL20.glDeleteProgram(this.id);
     }
     
+    /**
+     * Gibt die ID des ShaderPrograms zurück.
+     * @return id
+     */
     public int getId() {
     	return this.id;
     }
