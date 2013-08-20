@@ -46,6 +46,13 @@ public class ShaderProgram {
         }
     }
     
+    public void setUniform(String varName, float f) {
+        int loc = glGetUniformLocation(this.id, varName);
+        if(loc != -1) {
+            glUniform1f(loc, f);
+        }
+    }
+    
     /**
      * Hilfsmethode, um eine Textur in eine Uniform zu schreiben. Das
      * zugehoerige Programmobjekt muss aktiv sein.

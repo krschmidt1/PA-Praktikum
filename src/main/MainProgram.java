@@ -16,6 +16,7 @@ import pa.cl.CLUtil;
 import pa.cl.OpenCL;
 import pa.cl.CLUtil.PlatformDevicePair;
 import pa.util.IOUtil;
+import pa.util.SizeOf;
 
 import opengl.GL;
 import static opengl.GL.*;
@@ -33,15 +34,17 @@ public class MainProgram {
 	private boolean running = true;
 	
 	////// SHARED BLOCK
-	private int bufferObject = -1;
+	private int bufferObjectPositions = -1;
+	private int bufferObjectLifetimes = -1;
 	private int elements = 1<<8; // 2^n = 1<<n 
 
 	////// OPENCL BLOCK
 	private CLContext context;
 	private CLCommandQueue queue;
 	private CLProgram program;
-	private CLKernel kernel;
-	private CLMem mem;
+	private CLKernel kernelMove;
+	private CLMem memPositions;
+	private CLMem memLifetime;
 
 	////// OPENGL BLOCK
 	private ShaderProgram shaderProgram  = null;
@@ -62,20 +65,28 @@ public class MainProgram {
 	}
 	
 	private void initParticles() {
-		bufferObject = glGenBuffers();
-		
-		glBindBuffer(GL_ARRAY_BUFFER, bufferObject);
-
 		// generate particles
 		for(int i = 0; i < elements; i++) {
 			ParticleFactory.createParticle();
 		}
-		FloatBuffer particleData = ParticleFactory.getParticleData();
-		
-		glBufferData(GL_ARRAY_BUFFER, particleData, GL_STATIC_DRAW);
+
+		FloatBuffer particlePositions = ParticleFactory.getParticlePositions();
+
+		bufferObjectPositions = glGenBuffers();
+		glBindBuffer(GL_ARRAY_BUFFER, bufferObjectPositions);
+		glBufferData(GL_ARRAY_BUFFER, particlePositions, GL_STATIC_DRAW);
 		
         glEnableVertexAttribArray(ShaderProgram.ATTR_POS);
-        glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3*4, 0);
+        glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3 * SizeOf.FLOAT, 0);
+        
+        FloatBuffer particleLifetimes = ParticleFactory.getParticleLifetime();
+        
+        bufferObjectLifetimes = glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, bufferObjectLifetimes);
+        glBufferData(GL_ARRAY_BUFFER, particleLifetimes, GL_STATIC_DRAW);
+        
+        glEnableVertexAttribArray(ShaderProgram.ATTR_NORMAL);
+        glVertexAttribPointer(ShaderProgram.ATTR_NORMAL, 2, GL_FLOAT, false, 2 * SizeOf.FLOAT, 0);
         
 	}
 
@@ -83,8 +94,11 @@ public class MainProgram {
 		System.out.println("Running with " + elements + " Particles.");
 		
 		// push OpenGL Buffer to OpenCL
-		mem = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObject);
-        OpenCL.clSetKernelArg(kernel, 0, mem);
+		memPositions = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectPositions);
+		memLifetime = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectLifetimes);
+		
+        OpenCL.clSetKernelArg(kernelMove, 0, memPositions);
+        OpenCL.clSetKernelArg(kernelMove, 1, memLifetime);
         
         // calculate global work size
 		PointerBuffer gws = new PointerBuffer(elements);
@@ -93,15 +107,20 @@ public class MainProgram {
 		while(running) {
 			long deltaTime = System.currentTimeMillis() - lastTimestamp;
 			calculateFramesPerSecond(deltaTime);
+			
 			handleInput(deltaTime);
+			
+			OpenCL.clSetKernelArg(kernelMove, 2, (int)deltaTime);
+			
+			
+			OpenCL.clEnqueueAcquireGLObjects(queue, memPositions, null, null);
+			OpenCL.clEnqueueAcquireGLObjects(queue, memLifetime, null, null);
+	        OpenCL.clEnqueueNDRangeKernel(queue, kernelMove, 1, null, gws, null, null, null);
+	        OpenCL.clEnqueueReleaseGLObjects(queue, memLifetime, null, null);
+	        OpenCL.clEnqueueReleaseGLObjects(queue, memPositions, null, null);
 	        
-			OpenCL.clEnqueueAcquireGLObjects(queue, mem, null, null);
-	        OpenCL.clEnqueueNDRangeKernel(queue, kernel, 1, null, gws, null, null, null);
-	        OpenCL.clEnqueueReleaseGLObjects(queue, mem, null, null);
-	        
-//			debugCL(mem);	        
-//	        debugCL(mem, 1);
-//	        debugCL(mem, 5);
+//	        debugCL(memPositions, 3, 1);
+//	        debugCL(memLifetime, 2, 5);
 		
 			drawScene();
             
@@ -127,25 +146,28 @@ public class MainProgram {
         
         OpenCL.clBuildProgram(program, pair.device, "", null);
         
-        kernel = OpenCL.clCreateKernel(program, "move");
+        kernelMove = OpenCL.clCreateKernel(program, "move");
         
 	}
 	
 	public void stop() {
 		running = false;
 		
+		shaderProgram.delete();
+		
 		if(!Display.isCloseRequested())  {
 			Display.destroy();
 		}
 		
-        OpenCL.clReleaseMemObject(mem);
-        OpenCL.clReleaseKernel(kernel);
+		OpenCL.clReleaseMemObject(memLifetime);
+        OpenCL.clReleaseMemObject(memPositions);
+        OpenCL.clReleaseKernel(kernelMove);
         OpenCL.clReleaseProgram(program);
         OpenCL.clReleaseCommandQueue(queue);
         OpenCL.clReleaseContext(context);
         
         CLUtil.destroyCL();
-
+        
 		GL.destroy();
 	}
 	
@@ -172,7 +194,7 @@ public class MainProgram {
 		shaderProgram.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
 		shaderProgram.setUniform("camPos", cam.getCamPos());
 
-        ParticleFactory.draw();
+		ParticleFactory.draw();
         
         // present screen
         Display.update();
@@ -189,21 +211,21 @@ public class MainProgram {
         }
 	}
 	
-	public void debugCL(CLMem memObject) {
-		debugCL(memObject, 3);
+	public void debugCL(CLMem memObject, int numberOfValues) {
+		debugCL(memObject, numberOfValues, 3);
 	}
 	
-	public void debugCL(CLMem memObject, int maxParticles) {
-        FloatBuffer fb = BufferUtils.createFloatBuffer(elements * Particle.getNumberOfFloatValues());
+	public void debugCL(CLMem memObject, int numberOfValues, int maxParticles) {
+        FloatBuffer fb = BufferUtils.createFloatBuffer(elements * numberOfValues);
 		OpenCL.clEnqueueAcquireGLObjects(queue, memObject, null, null);
         OpenCL.clEnqueueReadBuffer(queue, memObject, 0, 0, fb, null, null);
         OpenCL.clEnqueueReleaseGLObjects(queue, memObject, null, null);
         fb.rewind();
 
-        for(int i = 0; i < Math.min(fb.capacity(), maxParticles * Particle.getNumberOfFloatValues()); i++) {
-        	if(i%Particle.getNumberOfFloatValues() == 0)
-        		System.out.print("Particle " + i/Particle.getNumberOfFloatValues() + ": ");
-        	System.out.print(fb.get(i) + ((i%Particle.getNumberOfFloatValues() == Particle.getNumberOfFloatValues()-1)?"\n":", "));
+        for(int i = 0; i < Math.min(fb.capacity(), maxParticles * numberOfValues); i++) {
+        	if(i%numberOfValues == 0)
+        		System.out.print("Particle " + i/numberOfValues + ": ");
+        	System.out.print(fb.get(i) + ((i%numberOfValues == numberOfValues-1)?"\n":", "));
         }
         System.out.println();
 	}
