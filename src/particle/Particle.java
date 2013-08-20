@@ -4,7 +4,6 @@ import org.lwjgl.util.vector.Vector3f;
 
 public class Particle {
 	private Vector3f position;
-	private int vaid = -1;
 	
 	public Particle() {
 		
@@ -30,5 +29,9 @@ public class Particle {
 		return "Particle: \n"
 		     + "\tPosition: (" + position.x + ", " + position.y + ", " + position.z + ")\n"
 		     ;
+	}
+	
+	public static int getNumberOfFloatValues() {
+		return 3;
 	}
 }

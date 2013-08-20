@@ -4,6 +4,8 @@ import java.nio.FloatBuffer;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
+import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 import org.lwjgl.opencl.CLCommandQueue;
 import org.lwjgl.opencl.CLContext;
 import org.lwjgl.opencl.CLKernel;
@@ -14,7 +16,6 @@ import pa.cl.CLUtil;
 import pa.cl.OpenCL;
 import pa.cl.CLUtil.PlatformDevicePair;
 import pa.util.IOUtil;
-import pa.util.SizeOf;
 
 import opengl.GL;
 import static opengl.GL.*;
@@ -23,7 +24,6 @@ import opengl.util.ShaderProgram;
 
 import org.lwjgl.LWJGLException;
 import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.GL20;
 import org.lwjgl.util.vector.Matrix4f;
 
 import particle.Particle;
@@ -34,7 +34,7 @@ public class MainProgram {
 	
 	////// SHARED BLOCK
 	private int bufferObject = -1;
-	private int elements = 3; 
+	private int elements = 1<<8; // 2^n = 1<<n 
 
 	////// OPENCL BLOCK
 	private CLContext context;
@@ -46,10 +46,13 @@ public class MainProgram {
 	////// OPENGL BLOCK
 	private ShaderProgram shaderProgram  = null;
 	private Matrix4f modelMat = new Matrix4f();
-	private Matrix4f modelIT  = opengl.util.Util.transposeInverse(modelMat, null);
+//	private Matrix4f modelIT  = opengl.util.Util.transposeInverse(modelMat, null);
 	private Camera   cam      = new Camera();
-	
 	private int vertexArrayID = -1;
+	
+	////// other
+	private long lastTimestamp = System.currentTimeMillis();
+	private int numberOfFrames = 0;
 	
 	public MainProgram() {
 		initGL();
@@ -73,45 +76,37 @@ public class MainProgram {
 		
         glEnableVertexAttribArray(ShaderProgram.ATTR_POS);
         glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3*4, 0);
-		
+        
 	}
 
 	public void run() {
-        
-//        mem = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_WRITE, positionBuffer);
-        mem = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObject);
+		System.out.println("Running with " + elements + " Particles.");
+		
+		// push OpenGL Buffer to OpenCL
+		mem = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObject);
         OpenCL.clSetKernelArg(kernel, 0, mem);
         
-        PointerBuffer gws = new PointerBuffer(elements);
+        // calculate global work size
+		PointerBuffer gws = new PointerBuffer(elements);
         gws.put(0, elements);
-
+        
 		while(running) {
-	        
+			long deltaTime = System.currentTimeMillis() - lastTimestamp;
+			calculateFramesPerSecond(deltaTime);
+			handleInput(deltaTime);
 	        
 			OpenCL.clEnqueueAcquireGLObjects(queue, mem, null, null);
 	        OpenCL.clEnqueueNDRangeKernel(queue, kernel, 1, null, gws, null, null, null);
 	        OpenCL.clEnqueueReleaseGLObjects(queue, mem, null, null);
 	        
-
-	        
-//	        OpenCL.clEnqueueReadBuffer(queue, mem, 0, 0, positionBuffer, null, null);
-//
-//	        positionBuffer.rewind();
-//	        for(int i = 0; i < elements; i++) {
-//	        	particles[i].setPosition(positionBuffer.get(), positionBuffer.get(), positionBuffer.get());
-//	        }
-//	        positionBuffer.rewind();
-//	        
-//	        for(int i = 0; i < positionBuffer.capacity(); i++) {
-//	        	System.out.print((int)(positionBuffer.get(i)*100) + ", ");
-//	        	if(i%3==2) System.out.print("    ");
-//	        }
-//        	System.out.println();
+//			debugCL(mem);	        
+//	        debugCL(mem, 1);
+//	        debugCL(mem, 5);
 		
 			drawScene();
             
             // if close is requested: close
-			if(Display.isCloseRequested()) {
+			if(Display.isCloseRequested() || Keyboard.isKeyDown(Keyboard.KEY_ESCAPE)) {
 				stop();
 			}
 		}
@@ -133,10 +128,15 @@ public class MainProgram {
         OpenCL.clBuildProgram(program, pair.device, "", null);
         
         kernel = OpenCL.clCreateKernel(program, "move");
+        
 	}
 	
 	public void stop() {
 		running = false;
+		
+		if(!Display.isCloseRequested())  {
+			Display.destroy();
+		}
 		
         OpenCL.clReleaseMemObject(mem);
         OpenCL.clReleaseKernel(kernel);
@@ -177,5 +177,45 @@ public class MainProgram {
         // present screen
         Display.update();
         Display.sync(60);
+	}
+	
+	private void calculateFramesPerSecond(long deltaTime) {
+		numberOfFrames++;
+        if(deltaTime > 1000) {
+        	float fps = numberOfFrames / (float)(deltaTime / 1000);
+        	lastTimestamp  = System.currentTimeMillis();
+        	numberOfFrames = 0;
+        	Display.setTitle("FPS: " + fps);
+        }
+	}
+	
+	public void debugCL(CLMem memObject) {
+		debugCL(memObject, 3);
+	}
+	
+	public void debugCL(CLMem memObject, int maxParticles) {
+        FloatBuffer fb = BufferUtils.createFloatBuffer(elements * Particle.getNumberOfFloatValues());
+		OpenCL.clEnqueueAcquireGLObjects(queue, memObject, null, null);
+        OpenCL.clEnqueueReadBuffer(queue, memObject, 0, 0, fb, null, null);
+        OpenCL.clEnqueueReleaseGLObjects(queue, memObject, null, null);
+        fb.rewind();
+
+        for(int i = 0; i < Math.min(fb.capacity(), maxParticles * Particle.getNumberOfFloatValues()); i++) {
+        	if(i%Particle.getNumberOfFloatValues() == 0)
+        		System.out.print("Particle " + i/Particle.getNumberOfFloatValues() + ": ");
+        	System.out.print(fb.get(i) + ((i%Particle.getNumberOfFloatValues() == Particle.getNumberOfFloatValues()-1)?"\n":", "));
+        }
+        System.out.println();
+	}
+	
+	
+	private void handleInput(long deltaTime) {
+		float speed = 5e-6f * deltaTime;
+			
+		while(Mouse.next()) {
+            if(Mouse.isButtonDown(0)) {
+                cam.rotate(-speed*Mouse.getEventDX(), -speed*Mouse.getEventDY());
+            }
+        }
 	}
 }

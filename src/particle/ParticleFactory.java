@@ -21,7 +21,7 @@ public class ParticleFactory {
 		
 	public static void createParticle() {
 		Random r = new Random();
-		particles.add(new Particle(r.nextFloat(), -r.nextFloat(), r.nextFloat()));
+		particles.add(new Particle(r.nextFloat()*2-1, r.nextFloat()*2-1, r.nextFloat()*2-1));
 	}
 	
 	public static void addParticle(Particle particle) {
