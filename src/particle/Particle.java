@@ -1,7 +1,5 @@
 package particle;
 
-import java.nio.FloatBuffer;
-
 import org.lwjgl.util.vector.Vector3f;
 
 public class Particle {

@@ -148,6 +148,7 @@ public class MainProgram {
 				stop();
 			}
 		}
+		System.out.println("Program shut down properly.");
 	}
 	
 	public void drawScene() {
