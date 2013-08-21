@@ -41,15 +41,20 @@ public class MainProgram {
 	////// SHARED BLOCK
 	private int bufferObjectPositions = -1;
 	private int bufferObjectLifetimes = -1;
-	private int elements = 1<<8; // 2^n = 1<<n 
+	private int elements         = 1<<8; // 2^n = 1<<n 
+    private int spawnElements    = 10;
+    private long respawnInterval = 100; // milliseconds
 
 	////// OPENCL BLOCK
 	private CLContext context    = null;
 	private CLCommandQueue queue = null;
 	private CLProgram program    = null;
 	private CLKernel kernelMove  = null;
+	private CLKernel kernelSpawn = null;
+	private CLKernel kernelSort  = null;
 	private CLMem memPositions   = null;
 	private CLMem memLifetime    = null;
+	private CLMem memNewPositions = null;
 
 	////// OPENGL BLOCK + DEFERRED SHADING
 	private Matrix4f modelMat = new Matrix4f();
@@ -66,27 +71,26 @@ public class MainProgram {
 
 	////// other
 	private long lastTimestamp  = System.currentTimeMillis();
+	private long sumDeltaTime   = 0;
 	private int  numberOfFrames = 0;
+	private long respawnTimer   = 0;
+	
+	private boolean animating = true;
 	
 	public MainProgram() {
 	    initGL();
 		initCL();
-	    initParticles();
+	    initParticleBuffers();
 	}
 	
-	private void initParticles() {
+	private void initParticleBuffers() {
 	    // vertex array for particles (the screen quad uses a different one)
 	    // TODO: both in one vertexarray?
 	    vertexArrayID = glGenVertexArrays();
         glBindVertexArray(vertexArrayID);
 
-		// generate particles
-		for(int i = 0; i < elements; i++) {
-			ParticleFactory.createParticle();
-		}
-
 		// positions
-		FloatBuffer particlePositions = ParticleFactory.getParticlePositions();
+		FloatBuffer particlePositions = ParticleFactory.createZeroFloatBuffer(elements * 3);
 		bufferObjectPositions = glGenBuffers();
 		glBindBuffer(GL_ARRAY_BUFFER, bufferObjectPositions);
 		glBufferData(GL_ARRAY_BUFFER, particlePositions, GL_STATIC_DRAW);
@@ -94,8 +98,8 @@ public class MainProgram {
         glEnableVertexAttribArray(ShaderProgram.ATTR_POS);
         glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3 * SizeOf.FLOAT, 0);
         
-        // lifetimes TODO
-        FloatBuffer particleLifetimes = ParticleFactory.getParticleLifetime();
+        // lifetimes
+        FloatBuffer particleLifetimes = ParticleFactory.createZeroFloatBuffer(elements * 2);
         bufferObjectLifetimes = glGenBuffers();
         glBindBuffer(GL_ARRAY_BUFFER, bufferObjectLifetimes);
         glBufferData(GL_ARRAY_BUFFER, particleLifetimes, GL_STATIC_DRAW);
@@ -112,31 +116,64 @@ public class MainProgram {
 		memPositions = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectPositions);
 		memLifetime  = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectLifetimes);
 		
+		// static kernel arguments
         OpenCL.clSetKernelArg(kernelMove, 0, memPositions);
         OpenCL.clSetKernelArg(kernelMove, 1, memLifetime);
+        
+        OpenCL.clSetKernelArg(kernelSpawn, 0, memPositions);
+        OpenCL.clSetKernelArg(kernelSpawn, 1, memLifetime);
+        OpenCL.clSetKernelArg(kernelSpawn, 3, spawnElements);
         
         // calculate global work size
 		PointerBuffer gws = new PointerBuffer(elements);
         gws.put(0, elements);
         
-		while(running) {
+        FloatBuffer bufferNewPositions = BufferUtils.createFloatBuffer(spawnElements * 4);
+        spawnElements = Math.min(spawnElements, elements);
+        
+        while(running) {
 			long deltaTime = System.currentTimeMillis() - lastTimestamp;
+			lastTimestamp += deltaTime;
+			respawnTimer  += deltaTime;
 			calculateFramesPerSecond(deltaTime);
 			
 			handleInput(deltaTime);
-			
-			
+
 			// TODO
-			// TODO
-			// TODO
-			
-			OpenCL.clSetKernelArg(kernelMove, 2, (int)deltaTime);
-			
-			OpenCL.clEnqueueAcquireGLObjects(queue, memPositions, null, null);
-			OpenCL.clEnqueueAcquireGLObjects(queue, memLifetime, null, null);
-	        OpenCL.clEnqueueNDRangeKernel(queue, kernelMove, 1, null, gws, null, null, null);
-	        OpenCL.clEnqueueReleaseGLObjects(queue, memLifetime, null, null);
-	        OpenCL.clEnqueueReleaseGLObjects(queue, memPositions, null, null);
+			if(animating) {
+			    
+    			OpenCL.clEnqueueAcquireGLObjects(queue, memPositions, null, null);
+    			OpenCL.clEnqueueAcquireGLObjects(queue, memLifetime, null, null);
+    
+    			OpenCL.clSetKernelArg(kernelMove, 2, (int)deltaTime);
+    			OpenCL.clEnqueueNDRangeKernel(queue, kernelMove, 1, null, gws, null, null, null);
+    	        
+    	        if(respawnTimer >= respawnInterval) {
+    	            respawnTimer = 0;
+    	            
+        	        for(int i = 0; i < spawnElements * 4; ) {
+                        float[] pos = ParticleFactory.generateCoordinates();
+                        bufferNewPositions.put(i++, pos[0]);
+                        bufferNewPositions.put(i++, pos[1]);
+                        bufferNewPositions.put(i++, pos[2]);
+                        bufferNewPositions.put(i++, ParticleFactory.generateLifetime());
+                    }
+                    bufferNewPositions.rewind();
+                    
+                    if(memNewPositions != null) {
+                        OpenCL.clReleaseMemObject(memNewPositions);
+                        memNewPositions = null;
+                    }
+                    memNewPositions = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_WRITE, bufferNewPositions);
+                    
+                    OpenCL.clSetKernelArg(kernelSpawn, 2, memNewPositions);
+                    OpenCL.clEnqueueNDRangeKernel(queue, kernelSpawn, 1, null, gws, null, null, null);
+    	        }
+    	        
+    	        OpenCL.clEnqueueReleaseGLObjects(queue, memLifetime, null, null);
+                OpenCL.clEnqueueReleaseGLObjects(queue, memPositions, null, null);
+                
+			}  // if animating
 	        
 //	        debugCL(memPositions, 3, 1);
 //	        debugCL(memLifetime, 2, 5);
@@ -164,7 +201,7 @@ public class MainProgram {
         depthFB.clearColor();
         
         glBindVertexArray(vertexArrayID);
-        ParticleFactory.draw();
+        opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, elements);
 		
 		
 		
@@ -181,7 +218,14 @@ public class MainProgram {
 	
 	private void handleInput(long deltaTime) {
         float speed = 5e-6f * deltaTime;
-            
+        
+        if(Keyboard.next() && Keyboard.isKeyDown(Keyboard.getEventKey())) {
+            switch(Keyboard.getEventKey()) {
+                case Keyboard.KEY_S: animating = !animating; 
+                    break; 
+            }
+        }
+        
         while(Mouse.next()) {
             if(Mouse.isButtonDown(0)) {
                 cam.rotate(-speed*Mouse.getEventDX(), -speed*Mouse.getEventDY());
@@ -241,10 +285,12 @@ public class MainProgram {
         OpenCL.clBuildProgram(program, pair.device, "", null);
         
         kernelMove = OpenCL.clCreateKernel(program, "move");
+        kernelSpawn = OpenCL.clCreateKernel(program, "respawn");
         // TODO other kernels
     }
 	
 	public void stop() {
+	    // TODO: Nullchecks
         running = false;
         
         screenQuadSP.delete();
@@ -257,7 +303,13 @@ public class MainProgram {
         
         OpenCL.clReleaseMemObject(memLifetime);
         OpenCL.clReleaseMemObject(memPositions);
+        
+        if(memNewPositions != null)
+            OpenCL.clReleaseMemObject(memNewPositions);
+        
+        OpenCL.clReleaseKernel(kernelSpawn);
         OpenCL.clReleaseKernel(kernelMove);
+
         OpenCL.clReleaseProgram(program);
         OpenCL.clReleaseCommandQueue(queue);
         OpenCL.clReleaseContext(context);
@@ -269,10 +321,11 @@ public class MainProgram {
 	
 	private void calculateFramesPerSecond(long deltaTime) {
 		numberOfFrames++;
-        if(deltaTime > 1000) {
-        	float fps = numberOfFrames / (float)(deltaTime / 1000);
-        	lastTimestamp  = System.currentTimeMillis();
+		sumDeltaTime += deltaTime;
+        if(sumDeltaTime > 1000) {
+        	float fps = numberOfFrames / (float)(sumDeltaTime / 1000);
         	numberOfFrames = 0;
+        	sumDeltaTime   = 0;
         	Display.setTitle("FPS: " + fps);
         }
 	}

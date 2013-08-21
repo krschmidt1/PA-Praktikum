@@ -12,9 +12,9 @@ out vec4 FragmentPos;
 out float alive;
 void main(void)
 {
-	alive = normalMC.y;
-    FragmentPos = model * vec4(positionMC, 1.0);
-    gl_Position = viewProj * FragmentPos;
-    float d = distance(camPos, positionMC);
+    alive        = normalMC.y;
+    FragmentPos  = model * vec4(positionMC, 1.0);
+    gl_Position  = viewProj * FragmentPos;
+    float d      = distance(camPos, positionMC);
     gl_PointSize = 20.0f/(1 + d * d);
 }

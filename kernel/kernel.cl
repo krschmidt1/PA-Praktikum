@@ -4,20 +4,27 @@ kernel void move(global float* positions, global float* lifetimes, const int dTi
 	
 	if(lifetimes[id*2] <= 0.0f) {
 		lifetimes[id*2+1] = 0.0f;
+		return;
 	}
-	else {
-		lifetimes[id*2] -= dTime;
-	}
+
+	lifetimes[id*2]  -= dTime;
+	positions[id*3+1] = positions[id*3+1] + 0.0005f * ((float)dTime);
 	
-	if(positions[id*3+1] >= 1.0f) {
-		positions[id*3+1] = -1.0f;
-	}
-	else
-		positions[id*3+1] = positions[id*3+1] + 0.01f;
+	// DEBUG
+	if(positions[id*3+1]>1) positions[id*3+1] = -1;
 		
 }
 
-kernel void respawn(global float* positions, global float* lifetimes) 
+kernel void respawn(global float* positions, global float* lifetimes, global float* newValues, const int spawnNum) 
 {
 	uint id = get_global_id(0);
+	
+	if(id > spawnNum)
+		return;
+		
+	positions[id * 3]     = newValues[id * 3];
+	positions[id * 3 + 1] = newValues[id * 3 + 1];
+	positions[id * 3 + 2] = newValues[id * 3 + 2];
+	lifetimes[id * 2]     = newValues[id * 3 + 3];
+	lifetimes[id * 2 + 1] = 1.0f;
 }
