@@ -29,7 +29,7 @@ public class ParticleFactory {
 	}
 	
 	public static float generateLifetime() {
-	    return rng.nextFloat() * 10000;
+	    return rng.nextFloat() * 8000 + 2000;
 	}
 
     public static FloatBuffer createZeroFloatBuffer(int capacity) {

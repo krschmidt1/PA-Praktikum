@@ -19,7 +19,7 @@ kernel void respawn(global float* positions, global float* lifetimes, global flo
 {
 	uint id = get_global_id(0);
 	
-	if(id > spawnNum)
+	if(id >= spawnNum)
 		return;
 		
 	positions[id * 3]     = newValues[id * 3];

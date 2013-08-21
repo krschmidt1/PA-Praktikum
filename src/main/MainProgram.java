@@ -42,8 +42,8 @@ public class MainProgram {
 	private int bufferObjectPositions = -1;
 	private int bufferObjectLifetimes = -1;
 	private int elements         = 1<<8; // 2^n = 1<<n 
-    private int spawnElements    = 10;
-    private long respawnInterval = 100; // milliseconds
+    private int spawnElements    = 2;
+    private long respawnInterval = 1000; // milliseconds
 
 	////// OPENCL BLOCK
 	private CLContext context    = null;
@@ -128,8 +128,9 @@ public class MainProgram {
 		PointerBuffer gws = new PointerBuffer(elements);
         gws.put(0, elements);
         
-        FloatBuffer bufferNewPositions = BufferUtils.createFloatBuffer(spawnElements * 4);
         spawnElements = Math.min(spawnElements, elements);
+        FloatBuffer bufferNewParticleData = BufferUtils.createFloatBuffer(spawnElements * 4);
+        System.out.println("Respawning: " + spawnElements + " elements per " + respawnInterval + " ms.");
         
         while(running) {
 			long deltaTime = System.currentTimeMillis() - lastTimestamp;
@@ -151,20 +152,26 @@ public class MainProgram {
     	        if(respawnTimer >= respawnInterval) {
     	            respawnTimer = 0;
     	            
-        	        for(int i = 0; i < spawnElements * 4; ) {
+        	        for(int i = 0; i < spawnElements * 4; i += 4) {
                         float[] pos = ParticleFactory.generateCoordinates();
-                        bufferNewPositions.put(i++, pos[0]);
-                        bufferNewPositions.put(i++, pos[1]);
-                        bufferNewPositions.put(i++, pos[2]);
-                        bufferNewPositions.put(i++, ParticleFactory.generateLifetime());
+                        bufferNewParticleData.put(i+0, pos[0]);
+                        bufferNewParticleData.put(i+1, pos[1]);
+                        bufferNewParticleData.put(i+2, pos[2]);
+                        bufferNewParticleData.put(i+3, ParticleFactory.generateLifetime());
                     }
-                    bufferNewPositions.rewind();
+                    bufferNewParticleData.rewind();
                     
+                    System.out.println("Respawn:");
+                    for(int i = 0; i < bufferNewParticleData.capacity(); i++) {
+                        System.out.print(bufferNewParticleData.get() + ", ");
+                    }
+                    System.out.println("\n");
+                    bufferNewParticleData.rewind();
                     if(memNewPositions != null) {
                         OpenCL.clReleaseMemObject(memNewPositions);
                         memNewPositions = null;
                     }
-                    memNewPositions = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_WRITE, bufferNewPositions);
+                    memNewPositions = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_ONLY, bufferNewParticleData);
                     
                     OpenCL.clSetKernelArg(kernelSpawn, 2, memNewPositions);
                     OpenCL.clEnqueueNDRangeKernel(queue, kernelSpawn, 1, null, gws, null, null, null);
@@ -213,7 +220,7 @@ public class MainProgram {
 		
         // present screen
         Display.update();
-        Display.sync(60);
+//        Display.sync(60);
 	}
 	
 	private void handleInput(long deltaTime) {
