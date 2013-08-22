@@ -2,9 +2,7 @@ package particle;
 
 
 import java.nio.FloatBuffer;
-import java.util.ArrayList;
 import java.util.Random;
-
 
 import opengl.util.Util;
 
@@ -31,7 +29,15 @@ public class ParticleFactory {
 	public static float generateLifetime() {
 	    return rng.nextFloat() * 8000 + 2000;
 	}
-
+	
+	public static float[] generateVelocity() {
+	    float x = rng.nextFloat() * 0.05f - 0.025f;
+	    float y = rng.nextFloat() * 0.10f + 0.020f;
+	    float z = rng.nextFloat() * 0.05f - 0.025f;
+	    
+	    return new float[] {x, y, z};
+	}
+	
     public static FloatBuffer createZeroFloatBuffer(int capacity) {
         FloatBuffer fb = BufferUtils.createFloatBuffer(capacity);
         for(int i = 0; i < fb.capacity(); i++) {

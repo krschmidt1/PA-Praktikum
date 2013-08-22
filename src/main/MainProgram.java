@@ -37,13 +37,16 @@ import opengl.util.GeometryFactory;
 
 public class MainProgram {
 	private boolean running = true;
+
+	////// PARAMETERS
+	private int elements         = 1<<10; // 2^n = 1<<n 
+	private int spawnElements    = 100;
+	private long respawnInterval = 1000; // milliseconds
 	
 	////// SHARED BLOCK
-	private int bufferObjectPositions = -1;
-	private int bufferObjectLifetimes = -1;
-	private int elements         = 1<<8; // 2^n = 1<<n 
-    private int spawnElements    = 100;
-    private long respawnInterval = 1000; // milliseconds
+	private int bufferObjectPositions  = -1;
+	private int bufferObjectLifetimes  = -1;
+	private int bufferObjectVelocities = -1;
 
 	////// OPENCL BLOCK
 	private CLContext context    = null;
@@ -53,8 +56,9 @@ public class MainProgram {
 	private CLKernel kernelSpawn = null;
 	private CLKernel kernelSort  = null;
 	private CLMem memPositions   = null;
+	private CLMem memVelocities  = null;
 	private CLMem memLifetime    = null;
-	private CLMem memNewPositions = null;
+	private CLMem memNewParticles = null;
 
 	////// OPENGL BLOCK + DEFERRED SHADING
 	private Matrix4f modelMat = new Matrix4f();
@@ -73,7 +77,7 @@ public class MainProgram {
 	private long lastTimestamp  = System.currentTimeMillis();
 	private long sumDeltaTime   = 0;
 	private int  numberOfFrames = 0;
-	private long respawnTimer   = 0;
+	private long respawnTimer   = respawnInterval;
 	
 	private boolean animating = true;
 	
@@ -98,6 +102,12 @@ public class MainProgram {
         glEnableVertexAttribArray(ShaderProgram.ATTR_POS);
         glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3 * SizeOf.FLOAT, 0);
         
+        // velocities
+        FloatBuffer particleVelocities = ParticleFactory.createZeroFloatBuffer(elements * 3);
+        bufferObjectVelocities = glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, bufferObjectVelocities);
+        glBufferData(GL_ARRAY_BUFFER, particleVelocities, GL_STATIC_DRAW);
+        
         // lifetimes
         FloatBuffer particleLifetimes = ParticleFactory.createZeroFloatBuffer(elements * 2);
         bufferObjectLifetimes = glGenBuffers();
@@ -113,23 +123,26 @@ public class MainProgram {
 		System.out.println("Running with " + elements + " Particles.");
 		
 		// push OpenGL Buffer to OpenCL TODO
-		memPositions = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectPositions);
-		memLifetime  = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectLifetimes);
+		memPositions  = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectPositions);
+		memVelocities = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectVelocities);
+		memLifetime   = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectLifetimes);
 		
 		// static kernel arguments
         OpenCL.clSetKernelArg(kernelMove, 0, memPositions);
-        OpenCL.clSetKernelArg(kernelMove, 1, memLifetime);
+        OpenCL.clSetKernelArg(kernelMove, 1, memVelocities);
+        OpenCL.clSetKernelArg(kernelMove, 2, memLifetime);
         
         OpenCL.clSetKernelArg(kernelSpawn, 0, memPositions);
-        OpenCL.clSetKernelArg(kernelSpawn, 1, memLifetime);
-        OpenCL.clSetKernelArg(kernelSpawn, 3, spawnElements);
+        OpenCL.clSetKernelArg(kernelSpawn, 1, memVelocities);
+        OpenCL.clSetKernelArg(kernelSpawn, 2, memLifetime);
         
         // calculate global work size
 		PointerBuffer gws = new PointerBuffer(elements);
         gws.put(0, elements);
         
         spawnElements = Math.min(spawnElements, elements);
-        FloatBuffer bufferNewParticleData = BufferUtils.createFloatBuffer(spawnElements * 4);
+        int numberOfParticleProperties = 3 + 3 + 1;
+        FloatBuffer bufferNewParticleData = BufferUtils.createFloatBuffer(spawnElements * numberOfParticleProperties);
         System.out.println("Respawning: " + spawnElements + " elements per " + respawnInterval + " ms.");
         
         while(running) {
@@ -139,51 +152,49 @@ public class MainProgram {
 			calculateFramesPerSecond(deltaTime);
 			
 			handleInput(deltaTime);
-
+			
 			// TODO
 			if(animating) {
 			    
     			OpenCL.clEnqueueAcquireGLObjects(queue, memPositions, null, null);
+    			OpenCL.clEnqueueAcquireGLObjects(queue, memVelocities, null, null);
     			OpenCL.clEnqueueAcquireGLObjects(queue, memLifetime, null, null);
     
-    			OpenCL.clSetKernelArg(kernelMove, 2, (int)deltaTime);
+    			OpenCL.clSetKernelArg(kernelMove, 3, (int)deltaTime);
     			OpenCL.clEnqueueNDRangeKernel(queue, kernelMove, 1, null, gws, null, null, null);
     	        
     	        if(respawnTimer >= respawnInterval) {
     	            respawnTimer = 0;
     	            
-        	        for(int i = 0; i < spawnElements * 4; i += 4) {
-                        float[] pos = ParticleFactory.generateCoordinates();
-                        bufferNewParticleData.put(i+0, pos[0]);
-                        bufferNewParticleData.put(i+1, pos[1]);
-                        bufferNewParticleData.put(i+2, pos[2]);
-                        bufferNewParticleData.put(i+3, ParticleFactory.generateLifetime());
+        	        for(int i = 0; i < spawnElements * numberOfParticleProperties; i += numberOfParticleProperties) {
+        	            int j = 0;
+                        float[] pos  = ParticleFactory.generateCoordinates();
+                        float[] velo = ParticleFactory.generateVelocity();
+                        bufferNewParticleData.put(i + j++, pos[0]);
+                        bufferNewParticleData.put(i + j++, pos[1]);
+                        bufferNewParticleData.put(i + j++, pos[2]);
+                        bufferNewParticleData.put(i + j++, velo[0]);
+                        bufferNewParticleData.put(i + j++, velo[1]);
+                        bufferNewParticleData.put(i + j++, velo[2]);
+                        bufferNewParticleData.put(i + j++, ParticleFactory.generateLifetime());
                     }
-                    bufferNewParticleData.rewind();
                     
-                    System.out.println("Respawn:");
-                    for(int i = 0; i < bufferNewParticleData.capacity(); i++) {
-                        System.out.print(bufferNewParticleData.get() + ", ");
+                    if(memNewParticles != null) {
+                        OpenCL.clReleaseMemObject(memNewParticles);
+                        memNewParticles = null;
                     }
-                    System.out.println("\n");
-                    bufferNewParticleData.rewind();
-                    if(memNewPositions != null) {
-                        OpenCL.clReleaseMemObject(memNewPositions);
-                        memNewPositions = null;
-                    }
-                    memNewPositions = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_ONLY, bufferNewParticleData);
+                    memNewParticles = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_ONLY, bufferNewParticleData);
                     
 
                     gws.put(0, spawnElements);
-
-                    OpenCL.clSetKernelArg(kernelSpawn, 2, memNewPositions);
+                    OpenCL.clSetKernelArg(kernelSpawn, 3, memNewParticles);
                     OpenCL.clEnqueueNDRangeKernel(queue, kernelSpawn, 1, null, gws, null, null, null);
-
                     gws.put(0, elements);
     	        }
     	        
-    	        OpenCL.clEnqueueReleaseGLObjects(queue, memLifetime, null, null);
-                OpenCL.clEnqueueReleaseGLObjects(queue, memPositions, null, null);
+    	        OpenCL.clEnqueueReleaseGLObjects(queue, memLifetime,   null, null);
+    	        OpenCL.clEnqueueReleaseGLObjects(queue, memVelocities, null, null);
+                OpenCL.clEnqueueReleaseGLObjects(queue, memPositions,  null, null);
                 
 			}  // if animating
 	        
@@ -314,10 +325,11 @@ public class MainProgram {
         }
         
         OpenCL.clReleaseMemObject(memLifetime);
+        OpenCL.clReleaseMemObject(memVelocities);
         OpenCL.clReleaseMemObject(memPositions);
         
-        if(memNewPositions != null)
-            OpenCL.clReleaseMemObject(memNewPositions);
+        if(memNewParticles != null)
+            OpenCL.clReleaseMemObject(memNewParticles);
         
         OpenCL.clReleaseKernel(kernelSpawn);
         OpenCL.clReleaseKernel(kernelMove);
