@@ -42,7 +42,7 @@ public class MainProgram {
 	private int bufferObjectPositions = -1;
 	private int bufferObjectLifetimes = -1;
 	private int elements         = 1<<8; // 2^n = 1<<n 
-    private int spawnElements    = 2;
+    private int spawnElements    = 100;
     private long respawnInterval = 1000; // milliseconds
 
 	////// OPENCL BLOCK
@@ -173,8 +173,13 @@ public class MainProgram {
                     }
                     memNewPositions = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_ONLY, bufferNewParticleData);
                     
+
+                    gws.put(0, spawnElements);
+
                     OpenCL.clSetKernelArg(kernelSpawn, 2, memNewPositions);
                     OpenCL.clEnqueueNDRangeKernel(queue, kernelSpawn, 1, null, gws, null, null, null);
+
+                    gws.put(0, elements);
     	        }
     	        
     	        OpenCL.clEnqueueReleaseGLObjects(queue, memLifetime, null, null);
