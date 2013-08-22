@@ -1,6 +1,7 @@
 package main;
 
 import java.nio.FloatBuffer;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
@@ -39,9 +40,9 @@ public class MainProgram {
 	private boolean running = true;
 
 	////// PARAMETERS
-	private int elements         = 1<<10; // 2^n = 1<<n 
-	private int spawnElements    = 100;
-	private long respawnInterval = 1000; // milliseconds
+	private int elements         = 1<<12; // 2^n = 1<<n 
+	private int spawnElements    = 32;
+	private long respawnInterval = 100; // milliseconds
 	
 	////// SHARED BLOCK
 	private int bufferObjectPositions  = -1;
@@ -51,13 +52,16 @@ public class MainProgram {
 	////// OPENCL BLOCK
 	private CLContext context    = null;
 	private CLCommandQueue queue = null;
+	private CLCommandQueue oooQueue = null;
 	private CLProgram program    = null;
 	private CLKernel kernelMove  = null;
 	private CLKernel kernelSpawn = null;
-	private CLKernel kernelSort  = null;
+    private CLKernel kernelBitonic     = null;
+    private CLKernel kernelBitonicUp   = null;
+    private CLKernel kernelBitonicDown = null;
 	private CLMem memPositions   = null;
 	private CLMem memVelocities  = null;
-	private CLMem memLifetime    = null;
+	private CLMem memLifetimes    = null;
 	private CLMem memNewParticles = null;
 
 	////// OPENGL BLOCK + DEFERRED SHADING
@@ -125,16 +129,26 @@ public class MainProgram {
 		// push OpenGL Buffer to OpenCL TODO
 		memPositions  = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectPositions);
 		memVelocities = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectVelocities);
-		memLifetime   = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectLifetimes);
+		memLifetimes   = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectLifetimes);
 		
 		// static kernel arguments
         OpenCL.clSetKernelArg(kernelMove, 0, memPositions);
         OpenCL.clSetKernelArg(kernelMove, 1, memVelocities);
-        OpenCL.clSetKernelArg(kernelMove, 2, memLifetime);
+        OpenCL.clSetKernelArg(kernelMove, 2, memLifetimes);
         
         OpenCL.clSetKernelArg(kernelSpawn, 0, memPositions);
         OpenCL.clSetKernelArg(kernelSpawn, 1, memVelocities);
-        OpenCL.clSetKernelArg(kernelSpawn, 2, memLifetime);
+        OpenCL.clSetKernelArg(kernelSpawn, 2, memLifetimes);
+        
+        OpenCL.clSetKernelArg(kernelBitonic,     0, memLifetimes);
+        OpenCL.clSetKernelArg(kernelBitonicUp,   0, memLifetimes);
+        OpenCL.clSetKernelArg(kernelBitonicDown, 0, memLifetimes);
+        OpenCL.clSetKernelArg(kernelBitonic,     1, memPositions);
+        OpenCL.clSetKernelArg(kernelBitonicUp,   1, memPositions);
+        OpenCL.clSetKernelArg(kernelBitonicDown, 1, memPositions);
+        OpenCL.clSetKernelArg(kernelBitonic,     2, memVelocities);
+        OpenCL.clSetKernelArg(kernelBitonicUp,   2, memVelocities);
+        OpenCL.clSetKernelArg(kernelBitonicDown, 2, memVelocities);
         
         // calculate global work size
 		PointerBuffer gws = new PointerBuffer(elements);
@@ -158,7 +172,7 @@ public class MainProgram {
 			    
     			OpenCL.clEnqueueAcquireGLObjects(queue, memPositions, null, null);
     			OpenCL.clEnqueueAcquireGLObjects(queue, memVelocities, null, null);
-    			OpenCL.clEnqueueAcquireGLObjects(queue, memLifetime, null, null);
+    			OpenCL.clEnqueueAcquireGLObjects(queue, memLifetimes, null, null);
     
     			OpenCL.clSetKernelArg(kernelMove, 3, (int)deltaTime);
     			OpenCL.clEnqueueNDRangeKernel(queue, kernelMove, 1, null, gws, null, null, null);
@@ -179,6 +193,8 @@ public class MainProgram {
                         bufferNewParticleData.put(i + j++, ParticleFactory.generateLifetime());
                     }
                     
+        	        sortParticles(elements);
+        	        
                     if(memNewParticles != null) {
                         OpenCL.clReleaseMemObject(memNewParticles);
                         memNewParticles = null;
@@ -192,7 +208,7 @@ public class MainProgram {
                     gws.put(0, elements);
     	        }
     	        
-    	        OpenCL.clEnqueueReleaseGLObjects(queue, memLifetime,   null, null);
+    	        OpenCL.clEnqueueReleaseGLObjects(queue, memLifetimes,   null, null);
     	        OpenCL.clEnqueueReleaseGLObjects(queue, memVelocities, null, null);
                 OpenCL.clEnqueueReleaseGLObjects(queue, memPositions,  null, null);
                 
@@ -211,7 +227,54 @@ public class MainProgram {
 		System.out.println("Program shut down properly.");
 	}
 	
-	public void drawScene() {
+	/**
+     * 
+     */
+    private void sortParticles(int n) {
+        PointerBuffer gws = new PointerBuffer(1);
+        gws.put(0, n / 2);
+        
+        int logN = (int)(Math.log(n) / Math.log(2));
+        int kernelCount = n / 2; 
+        int phase   = 1;
+        int offset1 = 0;
+        int offset2 = 0;
+        int runs    = 0;
+        
+        for(int i = 0; i < logN; i++) {
+            runs++;
+            for(int j= 0; j < kernelCount/2; j++) {
+                offset1 = j * (n/kernelCount) * 2;
+                offset2 = j * (n/kernelCount) * 2 + (n/kernelCount);
+                phase = 1;
+                for(int k = 0; k < runs; k++) {
+                    gws.put(0, (n / 2) / kernelCount);
+                    OpenCL.clSetKernelArg(kernelBitonicUp,   3, phase);
+                    OpenCL.clSetKernelArg(kernelBitonicDown, 3, phase);
+                    OpenCL.clSetKernelArg(kernelBitonicUp,   4, offset1);
+                    OpenCL.clSetKernelArg(kernelBitonicDown, 4, offset2);
+                    
+                    OpenCL.clEnqueueNDRangeKernel(oooQueue, kernelBitonicUp,   1, null, gws, null, null, null);
+                    OpenCL.clEnqueueNDRangeKernel(oooQueue, kernelBitonicDown, 1, null, gws, null, null, null);
+                    
+                    phase *= 2;
+                }
+                OpenCL.clFinish(oooQueue);
+            }
+            kernelCount /= 2;
+        }
+        
+        gws.put(0, n / 2);
+        phase = 1;
+        for(int i = 0; i < logN; i++) {
+            OpenCL.clSetKernelArg(kernelBitonic, 3, phase);
+            OpenCL.clEnqueueNDRangeKernel(oooQueue, kernelBitonic, 1, null, gws, null, null, null);
+            OpenCL.clFinish(oooQueue);
+            phase *= 2;
+        }
+    }
+
+    public void drawScene() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		
 		// post effects etc
@@ -236,7 +299,7 @@ public class MainProgram {
 		
         // present screen
         Display.update();
-//        Display.sync(60);
+        Display.sync(60);
 	}
 	
 	private void handleInput(long deltaTime) {
@@ -280,7 +343,7 @@ public class MainProgram {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glBindFragDataLocation(depthSP.getId(), 0, "depth");
         
-        glClearColor(0.1f, 0.0f, 0.4f, 1.0f);
+        glClearColor(0.1f, 0.0f, 0.3f, 1.0f);
     }
 	
 	public void initCL() {
@@ -300,16 +363,20 @@ public class MainProgram {
             pair = CLUtil.choosePlatformAndDevice();
         }
         
-        context = OpenCL.clCreateContext(pair.platform, pair.device, null, Display.getDrawable());
-        queue   = OpenCL.clCreateCommandQueue(context, pair.device, OpenCL.CL_QUEUE_PROFILING_ENABLE);
+        context  = OpenCL.clCreateContext(pair.platform, pair.device, null, Display.getDrawable());
+        queue    = OpenCL.clCreateCommandQueue(context, pair.device, 0);
+        oooQueue = OpenCL.clCreateCommandQueue(context, pair.device, OpenCL.CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
         // for out of order queue: OpenCL.CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE
         
         program = OpenCL.clCreateProgramWithSource(context, IOUtil.readFileContent("kernel/kernel.cl"));
         OpenCL.clBuildProgram(program, pair.device, "", null);
         
-        kernelMove = OpenCL.clCreateKernel(program, "move");
+        kernelMove  = OpenCL.clCreateKernel(program, "move");
         kernelSpawn = OpenCL.clCreateKernel(program, "respawn");
         // TODO other kernels
+        kernelBitonic     = OpenCL.clCreateKernel(program, "bitonicSort");
+        kernelBitonicUp   = OpenCL.clCreateKernel(program, "makeBitonicUp");
+        kernelBitonicDown = OpenCL.clCreateKernel(program, "makeBitonicDown");
     }
 	
 	public void stop() {
@@ -324,7 +391,7 @@ public class MainProgram {
             Display.destroy();
         }
         
-        OpenCL.clReleaseMemObject(memLifetime);
+        OpenCL.clReleaseMemObject(memLifetimes);
         OpenCL.clReleaseMemObject(memVelocities);
         OpenCL.clReleaseMemObject(memPositions);
         
@@ -333,8 +400,14 @@ public class MainProgram {
         
         OpenCL.clReleaseKernel(kernelSpawn);
         OpenCL.clReleaseKernel(kernelMove);
+        
+        // TODO SORT
+        OpenCL.clReleaseKernel(kernelBitonicDown);
+        OpenCL.clReleaseKernel(kernelBitonicUp);
+        OpenCL.clReleaseKernel(kernelBitonic);
 
         OpenCL.clReleaseProgram(program);
+        OpenCL.clReleaseCommandQueue(oooQueue);
         OpenCL.clReleaseCommandQueue(queue);
         OpenCL.clReleaseContext(context);
         
@@ -360,9 +433,9 @@ public class MainProgram {
 	
 	public void debugCL(CLMem memObject, int numberOfValues, int maxParticles) {
         FloatBuffer fb = BufferUtils.createFloatBuffer(elements * numberOfValues);
-		OpenCL.clEnqueueAcquireGLObjects(queue, memObject, null, null);
+//		OpenCL.clEnqueueAcquireGLObjects(queue, memObject, null, null);
         OpenCL.clEnqueueReadBuffer(queue, memObject, 0, 0, fb, null, null);
-        OpenCL.clEnqueueReleaseGLObjects(queue, memObject, null, null);
+//        OpenCL.clEnqueueReleaseGLObjects(queue, memObject, null, null);
         fb.rewind();
 
         for(int i = 0; i < Math.min(fb.capacity(), maxParticles * numberOfValues); i++) {
