@@ -32,7 +32,7 @@ public class BitonicSort {
 	public static void main(String[] args)
     {
     	
-		int n = 1 << 15;//2048;
+		int n = 1 << 10;//2048;
 		float[] vals = new float[n];
 		for(int i = 0; i < n; i++) {
 			vals[i] = (float)(int)(Math.random() * 255.0 + 0.5);
@@ -113,10 +113,7 @@ public class BitonicSort {
 					
 					OpenCL.clEnqueueNDRangeKernel(queue, kernelBitonicUp, 1, null, gws, null, null, null);
 					OpenCL.clEnqueueNDRangeKernel(queue, kernelBitonicDown, 1, null, gws, null, null, null);
-					
-					OpenCL.clEnqueueReadBuffer(queue, valMem, 0, 0, valBuff, null, null);
-					OpenCL.clFinish(queue);
-					
+										
 					phase*=2;
 				}
 				OpenCL.clFinish(queue);
@@ -130,8 +127,6 @@ public class BitonicSort {
 		for(int i = 0; i < logN; i++) {
 			OpenCL.clSetKernelArg(kernelBitonic, 1, phase);
 			OpenCL.clEnqueueNDRangeKernel(queue, kernelBitonic, 1, null, gws, null, null, null);
-			OpenCL.clFinish(queue);
-			OpenCL.clEnqueueReadBuffer(queue, valMem, 0, 0, valBuff, null, null);
 			OpenCL.clFinish(queue);
 			
 			phase*=2;
@@ -172,13 +167,7 @@ public class BitonicSort {
     	
         System.out.println(String.format("'BitonicSort' (with java calls) for %d elements took %.3f Seconds.", n, time / (1E3)));
 
+        CLUtil.printDeviceInfos(pair.device);
     }
 
-	private static void makeBitonic() {
-		
-	}
-	
-	private static void BitonicSort() {
-		
-	}
 }
