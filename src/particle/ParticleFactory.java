@@ -21,7 +21,7 @@ public class ParticleFactory {
         
 	    return new float[]{
     	            radius * MathUtil.cos(theta) * MathUtil.cos(phi), 
-                    radius * MathUtil.cos(theta) * MathUtil.sin(phi) - 0.5f, 
+                    radius * MathUtil.cos(theta) * MathUtil.sin(phi) * 0.1f - 0.5f, 
                     radius * MathUtil.sin(theta)
                 };
 	}

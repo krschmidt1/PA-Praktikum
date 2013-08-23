@@ -40,8 +40,8 @@ public class MainProgram {
 	private boolean running = true;
 
 	////// PARAMETERS
-	private int elements         = 1<<10; // 2^n = 1<<n 
-	private int spawnElements    = 32;
+	private int elements         = 1<<10; // 2^n = 1<<n // we want 1<<16 
+	private int spawnElements    = 1<<4;  // we want 1<< 5-7
 	private long respawnInterval = 100; // milliseconds
 	
 	////// SHARED BLOCK
@@ -286,7 +286,6 @@ public class MainProgram {
         depthFB.bind();
         depthFB.clearColor();
         
-        glBlendFunc(GL_ONE, GL_ONE);
         glEnable(GL_BLEND);
         glDisable(GL_DEPTH_TEST);
         
@@ -349,7 +348,8 @@ public class MainProgram {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glBindFragDataLocation(depthSP.getId(), 0, "depth");
         
-        glClearColor(0.1f, 0.0f, 0.3f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glBlendFunc(GL_ONE, GL_ONE);
     }
 	
 	public void initCL() {
@@ -439,9 +439,7 @@ public class MainProgram {
 	
 	public void debugCL(CLMem memObject, int numberOfValues, int maxParticles) {
         FloatBuffer fb = BufferUtils.createFloatBuffer(elements * numberOfValues);
-//		OpenCL.clEnqueueAcquireGLObjects(queue, memObject, null, null);
         OpenCL.clEnqueueReadBuffer(queue, memObject, 0, 0, fb, null, null);
-//        OpenCL.clEnqueueReleaseGLObjects(queue, memObject, null, null);
         fb.rewind();
 
         for(int i = 0; i < Math.min(fb.capacity(), maxParticles * numberOfValues); i++) {
