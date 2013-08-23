@@ -1,25 +1,73 @@
-kernel void move(global float* positions, global float* velocities, global float* lifetimes, const int dTime)
+float3 closestLPA(float3 pos, global float* lpas, int numLPA) {
+	float3 lpa;
+	float3 closest = (float3)(0.0f, 2.0f, 0.0f);
+	float dist = 10000.0f;
+	
+	for(int i = 0; i < numLPA; i++) {
+		lpa = (float3)(lpas[i * 3], lpas[i * 3 + 1], lpas[i * 3 + 2]);
+		float newDist = length(lpa - pos);
+		
+		if(lpa.y <= pos.y || newDist < 0.2f)
+			continue;
+		
+		if(newDist < dist) {
+			closest = lpa;
+			dist = newDist;
+		}
+	}
+	return closest;
+}
+
+kernel void move(global float* positions, global float* velocities, global float* lifetimes, global float* lowPressureAreas, const int numLPA, const int dTime)
 {
 	uint id = get_global_id(0);
-	float speed = 0.001f;
 	
-	if(lifetimes[id * 2] <= 0.0f) {
+	float lifetime = lifetimes[id * 2] - dTime;
+
+	if(lifetime <= 0.0f) {
 		lifetimes[id * 2]     = -10000.0f;
 		lifetimes[id * 2 + 1] = 0.0f;
 		return;
 	}
-
-	lifetimes[id * 2]  -= dTime;
 	
+	const float speed = 0.001f;
 	float timeFactor = speed * ((float)dTime);
-	positions[id * 3]     = positions[id * 3]     + velocities[id * 3]     * timeFactor;
-	positions[id * 3 + 1] = positions[id * 3 + 1] + velocities[id * 3 + 1] * timeFactor;
-	positions[id * 3 + 2] = positions[id * 3 + 2] + velocities[id * 3 + 2] * timeFactor;
+
+	float alive    = lifetimes[id * 2 + 1];
+	float3 position = (float3)(positions[id * 3],  positions[id * 3 + 1],  positions[id * 3 + 2]);
+	float3 velocity = (float3)(velocities[id * 3], velocities[id * 3 + 1], velocities[id * 3 + 2]);
 	
-	// DEBUG
-	//if(positions[id*3+1]>1) positions[id*3+1] = -1;
-		
+	float3 lpa = closestLPA(position, lowPressureAreas, numLPA);
+	
+	float3 newPosition = (float3)0.0f;
+	float3 newVelocity = (float3)0.0f;
+	
+	newPosition = position + velocity * timeFactor * 0.1f;
+	newVelocity = velocity + normalize((lpa - newPosition) * timeFactor * 0.5f) + (float3)(0, 0.4f, 0);
+	newVelocity = normalize(newVelocity);
+	
+	// THIS IS ONLY SOME TESTING, AND NOT FOR LATER USE
+	if(id < (uint)numLPA) {
+		lowPressureAreas[id * 3]     = lowPressureAreas[id * 3]   + normalize(newPosition.x) * 0.1f;
+		lowPressureAreas[id * 3 + 1] = lowPressureAreas[id * 3+1] + normalize(newPosition.x) * 0.1f;
+		lowPressureAreas[id * 3 + 2] = lowPressureAreas[id * 3+2] + normalize(newPosition.x) * 0.1f;
+	}
+	
+	
+
+	
+	
+	
+	lifetimes[id * 2]      = lifetime;
+	positions[id * 3]      = newPosition.x;
+	positions[id * 3 + 1]  = newPosition.y;
+	positions[id * 3 + 2]  = newPosition.z;
+	velocities[id * 3]     = newVelocity.x;
+	velocities[id * 3 + 1] = newVelocity.y;
+	velocities[id * 3 + 2] = newVelocity.z;
+	
 }
+
 
 kernel void shift(global float* positions, global float* velocities, global float* lifetimes, const int size, const int n) 
 {
