@@ -25,6 +25,7 @@ import org.lwjgl.opencl.CLKernel;
 import org.lwjgl.opencl.CLMem;
 import org.lwjgl.opencl.CLPlatform;
 import org.lwjgl.opencl.CLProgram;
+import org.lwjgl.opencl.CLSampler;
 import org.lwjgl.opengl.Drawable;
 import org.lwjgl.opengl.GL11;
 
@@ -110,6 +111,15 @@ public class OpenCL
         }
         checkError();
         return mem;
+    }
+    
+    /**
+     * @see <a href="http://www.khronos.org/registry/cl/sdk/1.0/docs/man/xhtml/clCreateSampler.html">clCreateSampler</a>
+     */
+    public static CLSampler clCreateSampler(CLContext context, int normalized_coords, int addressing_mode, int filter_mode) {
+    	CLSampler sampler = CL10.clCreateSampler(context, normalized_coords, addressing_mode, filter_mode, lastErrorCode);
+    	checkError();
+    	return sampler;
     }
     
     /**
@@ -218,6 +228,14 @@ public class OpenCL
      * @see <a href="http://www.khronos.org/registry/cl/sdk/1.0/docs/man/xhtml/clSetKernelArg.html">clSetKernelArg</a>
      */
     public static void clSetKernelArg(CLKernel kernel, int arg_index, CLMem arg_value) 
+    {
+        checkError(CL10.clSetKernelArg(kernel, arg_index, arg_value));
+    }
+    
+    /**
+     * @see <a href="http://www.khronos.org/registry/cl/sdk/1.0/docs/man/xhtml/clSetKernelArg.html">clSetKernelArg</a>
+     */
+    public static void clSetKernelArg(CLKernel kernel, int arg_index, CLSampler arg_value) 
     {
         checkError(CL10.clSetKernelArg(kernel, arg_index, arg_value));
     }
@@ -372,6 +390,14 @@ public class OpenCL
     public static void clReleaseMemObject(CLMem mem) 
     {
         checkError(CL10.clReleaseMemObject(mem));
+    }
+    
+    /**
+     * @see <a href="http://www.khronos.org/registry/cl/sdk/1.0/docs/man/xhtml/clReleaseSampler.html">clReleaseSampler</a>
+     */
+    public static void clReleaseSampler(CLSampler sampler) 
+    {
+        checkError(CL10.clReleaseSampler(sampler));
     }
 
     /**
@@ -758,7 +784,7 @@ public class OpenCL
          */
         public static final int CL_FILTER_NEAREST = 0x1140,
             CL_FILTER_LINEAR = 0x1141;
-
+        
         /**
          * cl_sampler_info 
          */
