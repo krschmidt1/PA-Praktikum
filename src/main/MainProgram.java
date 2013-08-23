@@ -1,7 +1,6 @@
 package main;
 
 import java.nio.FloatBuffer;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
@@ -41,8 +40,9 @@ public class MainProgram {
 
 	////// PARAMETERS
 	private int elements         = 1<<10; // 2^n = 1<<n // we want 1<<16 
-	private int spawnElements    = 1<<4;  // we want 1<< 5-7
-	private long respawnInterval = 100; // milliseconds
+	private int spawnElements    = 1<<5;  // we want 1<< 5-7
+	private long respawnInterval = 200; // milliseconds
+	private int numberLPA        = 1<<5; // number of low pressure areas
 	
 	////// SHARED BLOCK
 	private int bufferObjectPositions  = -1;
@@ -63,6 +63,7 @@ public class MainProgram {
 	private CLMem memVelocities  = null;
 	private CLMem memLifetimes    = null;
 	private CLMem memNewParticles = null;
+	private CLMem memLowPressureAreas = null;
 
 	////// OPENGL BLOCK + DEFERRED SHADING
 	private Matrix4f modelMat = new Matrix4f();
@@ -84,6 +85,7 @@ public class MainProgram {
 	private long respawnTimer   = respawnInterval;
 	
 	private boolean animating = true;
+
 	
 	public MainProgram() {
 	    initGL();
@@ -121,6 +123,10 @@ public class MainProgram {
         glEnableVertexAttribArray(ShaderProgram.ATTR_NORMAL);
         glVertexAttribPointer(ShaderProgram.ATTR_NORMAL, 2, GL_FLOAT, false, 2 * SizeOf.FLOAT, 0);
         
+        // pressure areas
+        FloatBuffer pressureAreas = ParticleFactory.createLPA(numberLPA);
+        memLowPressureAreas = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_WRITE, pressureAreas);
+        
 	}
 
 	public void run() {
@@ -129,12 +135,14 @@ public class MainProgram {
 		// push OpenGL Buffer to OpenCL TODO
 		memPositions  = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectPositions);
 		memVelocities = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectVelocities);
-		memLifetimes   = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectLifetimes);
+		memLifetimes  = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectLifetimes);
 		
 		// static kernel arguments
         OpenCL.clSetKernelArg(kernelMove, 0, memPositions);
         OpenCL.clSetKernelArg(kernelMove, 1, memVelocities);
         OpenCL.clSetKernelArg(kernelMove, 2, memLifetimes);
+        OpenCL.clSetKernelArg(kernelMove, 3, memLowPressureAreas);
+        OpenCL.clSetKernelArg(kernelMove, 4, numberLPA);
         
         OpenCL.clSetKernelArg(kernelSpawn, 0, memPositions);
         OpenCL.clSetKernelArg(kernelSpawn, 1, memVelocities);
@@ -174,7 +182,7 @@ public class MainProgram {
     			OpenCL.clEnqueueAcquireGLObjects(queue, memVelocities, null, null);
     			OpenCL.clEnqueueAcquireGLObjects(queue, memLifetimes, null, null);
     
-    			OpenCL.clSetKernelArg(kernelMove, 3, (int)deltaTime);
+    			OpenCL.clSetKernelArg(kernelMove, 5, (int)deltaTime);
     			OpenCL.clEnqueueNDRangeKernel(queue, kernelMove, 1, null, gws, null, null, null);
     	        
     	        if(respawnTimer >= respawnInterval) {
@@ -400,6 +408,7 @@ public class MainProgram {
         OpenCL.clReleaseMemObject(memLifetimes);
         OpenCL.clReleaseMemObject(memVelocities);
         OpenCL.clReleaseMemObject(memPositions);
+        OpenCL.clReleaseMemObject(memLowPressureAreas);
         
         if(memNewParticles != null)
             OpenCL.clReleaseMemObject(memNewParticles);

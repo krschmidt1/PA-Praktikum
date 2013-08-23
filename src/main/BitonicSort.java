@@ -1,7 +1,6 @@
 package main;
 
 import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
@@ -68,9 +67,6 @@ public class BitonicSort {
         
         long time = System.currentTimeMillis();
         
-        long nanos = 0;
-        long nanosScan = 0;
-        long nanosBucket = 0;
         gws = new PointerBuffer(1);
 
         if(vals.length <= 512) {
