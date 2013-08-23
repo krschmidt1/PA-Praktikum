@@ -16,5 +16,5 @@ void main(void)
     FragmentPos  = model * vec4(positionMC, 1.0);
     gl_Position  = viewProj * FragmentPos;
     float d      = distance(camPos, positionMC);
-    gl_PointSize = 20.0f/(1 + d * d);
+    gl_PointSize = 40.0f/(1 + d * d);
 }

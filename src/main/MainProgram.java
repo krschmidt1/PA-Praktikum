@@ -40,7 +40,7 @@ public class MainProgram {
 	private boolean running = true;
 
 	////// PARAMETERS
-	private int elements         = 1<<12; // 2^n = 1<<n 
+	private int elements         = 1<<10; // 2^n = 1<<n 
 	private int spawnElements    = 32;
 	private long respawnInterval = 100; // milliseconds
 	
@@ -286,9 +286,15 @@ public class MainProgram {
         depthFB.bind();
         depthFB.clearColor();
         
+        glBlendFunc(GL_ONE, GL_ONE);
+        glEnable(GL_BLEND);
+        glDisable(GL_DEPTH_TEST);
+        
         glBindVertexArray(vertexArrayID);
         opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, elements);
-		
+
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
 		
 		
 		// draw texture on screenquad
