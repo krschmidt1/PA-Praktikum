@@ -13,6 +13,7 @@ import org.lwjgl.opencl.CLContext;
 import org.lwjgl.opencl.CLKernel;
 import org.lwjgl.opencl.CLMem;
 import org.lwjgl.opencl.CLProgram;
+import org.lwjgl.opencl.CLSampler;
 
 import pa.cl.CLUtil;
 import pa.cl.OpenCL;
@@ -40,7 +41,7 @@ public class MainProgram {
 	private boolean running = true;
 
 	////// PARAMETERS
-	private int elements         = 1<<10; // 2^n = 1<<n // we want 1<<16 
+	private int elements         = 1<<8; // 2^n = 1<<n // we want 1<<16 
 	private int spawnElements    = 1<<4;  // we want 1<< 5-7
 	private long respawnInterval = 100; // milliseconds
 	
@@ -59,10 +60,16 @@ public class MainProgram {
     private CLKernel kernelBitonic     = null;
     private CLKernel kernelBitonicUp   = null;
     private CLKernel kernelBitonicDown = null;
-	private CLMem memPositions   = null;
-	private CLMem memVelocities  = null;
+    private CLKernel kernelCalcSpeed   = null;
+	private CLMem memPositions    = null;
+	private CLMem memVelocities   = null;
 	private CLMem memLifetimes    = null;
 	private CLMem memNewParticles = null;
+	private CLMem clTexture1  = null;
+	private CLMem clTexture2  = null;
+	private CLSampler sampler = null;
+	private CLMem memModelViewProj = null;
+	private PointerBuffer gws = null;
 
 	////// OPENGL BLOCK + DEFERRED SHADING
 	private Matrix4f modelMat = new Matrix4f();
@@ -76,6 +83,7 @@ public class MainProgram {
 	private ShaderProgram depthSP = null;
 	private FrameBuffer depthFB   = null;
 	private Texture depthTex      = null;
+	private Texture depthTex1     = null;
 
 	////// other
 	private long lastTimestamp  = System.currentTimeMillis();
@@ -84,6 +92,7 @@ public class MainProgram {
 	private long respawnTimer   = respawnInterval;
 	
 	private boolean animating = true;
+
 	
 	public MainProgram() {
 	    initGL();
@@ -130,6 +139,17 @@ public class MainProgram {
 		memPositions  = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectPositions);
 		memVelocities = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectVelocities);
 		memLifetimes   = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectLifetimes);
+		glBindTexture(GL_TEXTURE_2D, depthTex.getId());
+        clTexture1 = OpenCL.clCreateFromGLTexture2D(context, OpenCL.CL_MEM_READ_ONLY, GL_TEXTURE_2D, 0, depthTex.getId());
+		glBindTexture(GL_TEXTURE_2D, depthTex1.getId());
+        clTexture2 = OpenCL.clCreateFromGLTexture2D(context, OpenCL.CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, depthTex1.getId());
+        sampler = OpenCL.clCreateSampler(context, OpenCL.CL_TRUE, OpenCL.CL_ADDRESS_CLAMP_TO_EDGE, OpenCL.CL_FILTER_NEAREST);
+        
+        Matrix4f mvp = opengl.util.Util.mul(null, modelMat, cam.getProjection(), cam.getView());
+        FloatBuffer bufferMVP = BufferUtils.createFloatBuffer(16);
+        mvp.store(bufferMVP);
+        bufferMVP.rewind();
+        memModelViewProj = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR, bufferMVP);
 		
 		// static kernel arguments
         OpenCL.clSetKernelArg(kernelMove, 0, memPositions);
@@ -150,8 +170,16 @@ public class MainProgram {
         OpenCL.clSetKernelArg(kernelBitonicUp,   2, memVelocities);
         OpenCL.clSetKernelArg(kernelBitonicDown, 2, memVelocities);
         
+        OpenCL.clSetKernelArg(kernelCalcSpeed, 0, memLifetimes);
+        OpenCL.clSetKernelArg(kernelCalcSpeed, 1, memPositions);
+        OpenCL.clSetKernelArg(kernelCalcSpeed, 2, memVelocities);
+        OpenCL.clSetKernelArg(kernelCalcSpeed, 3, clTexture1);
+        OpenCL.clSetKernelArg(kernelCalcSpeed, 4, clTexture2);
+        OpenCL.clSetKernelArg(kernelCalcSpeed, 5, sampler);
+        OpenCL.clSetKernelArg(kernelCalcSpeed, 6, memModelViewProj);
+        
         // calculate global work size
-		PointerBuffer gws = new PointerBuffer(elements);
+		gws = new PointerBuffer(1);
         gws.put(0, elements);
         
         spawnElements = Math.min(spawnElements, elements);
@@ -190,7 +218,7 @@ public class MainProgram {
                         bufferNewParticleData.put(i + j++, velo[0]);
                         bufferNewParticleData.put(i + j++, velo[1]);
                         bufferNewParticleData.put(i + j++, velo[2]);
-                        bufferNewParticleData.put(i + j++, ParticleFactory.generateLifetime());
+                        bufferNewParticleData.put(i + j++, 8000);//ParticleFactory.generateLifetime());
                     }
                     
         	        sortParticles(elements);
@@ -295,7 +323,27 @@ public class MainProgram {
         glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);
 		
+        
+        
+//        CLMem clTexture = OpenCL.clCreateFromGLTexture2D(context, OpenCL.CL_MEM_READ_WRITE, GL_TEXTURE_2D, 0, depthTex.getId());
+        
+
+		OpenCL.clEnqueueAcquireGLObjects(queue, memPositions, null, null);
+		OpenCL.clEnqueueAcquireGLObjects(queue, memVelocities, null, null);
+		OpenCL.clEnqueueAcquireGLObjects(queue, memLifetimes, null, null);
+		OpenCL.clEnqueueAcquireGLObjects(queue, clTexture1, null, null);
+		OpenCL.clEnqueueAcquireGLObjects(queue, clTexture2, null, null);
+
+		//OpenCL.clEnqueueNDRangeKernel(queue, kernelCalcSpeed, 1, null, gws, null, null, null);
+
+        OpenCL.clEnqueueReleaseGLObjects(queue, memLifetimes,   null, null);
+        OpenCL.clEnqueueReleaseGLObjects(queue, memVelocities, null, null);
+        OpenCL.clEnqueueReleaseGLObjects(queue, memPositions,  null, null);
+        OpenCL.clEnqueueReleaseGLObjects(queue, clTexture1,  null, null);
+        OpenCL.clEnqueueReleaseGLObjects(queue, clTexture2,  null, null);
 		
+        
+        
 		// draw texture on screenquad
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		screenQuadSP.use();        
@@ -304,7 +352,7 @@ public class MainProgram {
 		
         // present screen
         Display.update();
-        Display.sync(60);
+//        Display.sync(60);
 	}
 	
 	private void handleInput(long deltaTime) {
@@ -348,6 +396,11 @@ public class MainProgram {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glBindFragDataLocation(depthSP.getId(), 0, "depth");
         
+        depthTex1 = new Texture(GL_TEXTURE_2D, textureUnit++);
+        depthFB.addTexture(depthTex1, GL_RGBA16F, GL_RGBA);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glBlendFunc(GL_ONE, GL_ONE);
     }
@@ -383,6 +436,7 @@ public class MainProgram {
         kernelBitonic     = OpenCL.clCreateKernel(program, "bitonicSort");
         kernelBitonicUp   = OpenCL.clCreateKernel(program, "makeBitonicUp");
         kernelBitonicDown = OpenCL.clCreateKernel(program, "makeBitonicDown");
+        kernelCalcSpeed   = OpenCL.clCreateKernel(program, "calcSpeed");
     }
 	
 	public void stop() {
@@ -396,6 +450,11 @@ public class MainProgram {
         if(!Display.isCloseRequested())  {
             Display.destroy();
         }
+
+        OpenCL.clReleaseMemObject(memModelViewProj);
+        OpenCL.clReleaseSampler(sampler);
+        OpenCL.clReleaseMemObject(clTexture1);
+        OpenCL.clReleaseMemObject(clTexture2);
         
         OpenCL.clReleaseMemObject(memLifetimes);
         OpenCL.clReleaseMemObject(memVelocities);
@@ -403,7 +462,8 @@ public class MainProgram {
         
         if(memNewParticles != null)
             OpenCL.clReleaseMemObject(memNewParticles);
-        
+
+        OpenCL.clReleaseKernel(kernelCalcSpeed);
         OpenCL.clReleaseKernel(kernelSpawn);
         OpenCL.clReleaseKernel(kernelMove);
         

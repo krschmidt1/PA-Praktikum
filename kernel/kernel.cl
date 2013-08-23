@@ -201,3 +201,34 @@ kernel void makeBitonicDown(global float* lifetime, global float* positions, glo
 		velocities[secondId3f + 2] = velZ;
 	}
 }
+
+float4 matVecMul(global float* matrix, float4 vector)
+{
+	float4 result;
+	
+	result.x = matrix[0] * vector.x + matrix[4] * vector.y + matrix[8]  * vector.z + matrix[12] * vector.w;
+	result.y = matrix[1] * vector.x + matrix[5] * vector.y + matrix[9]  * vector.z + matrix[13] * vector.w;
+	result.z = matrix[2] * vector.x + matrix[6] * vector.y + matrix[10] * vector.z + matrix[14] * vector.w;
+	result.w = matrix[3] * vector.x + matrix[7] * vector.y + matrix[11] * vector.z + matrix[15] * vector.w;
+	
+	return result;
+}
+
+kernel void calcSpeed(global float* lifetime, global float* positions, global float* velocities, read_only image2d_t texture, write_only image2d_t texture2, const sampler_t sampler, global float* mvp)
+{
+	uint id = get_global_id(0);
+	uint size = get_global_size(0);
+	
+	velocities[id*3  ] = 0.1f;
+	velocities[id*3+1] = 0.1f;
+	velocities[id*3+2] = 0.1f;
+	
+	float2 coordsf = (matVecMul(mvp, (float4)(positions[id*3], positions[id*3+1], positions[id*3+2], 1.0f))).xy;
+	int2 coords = (int2)( (int)(clamp(coordsf.x, 0.f, 1.f)*get_image_width(texture)), (int)(clamp(coordsf.y, 0.f, 1.f)*get_image_height(texture)));
+	//coords = (int2)(0,0);
+	
+	//float4 color = read_imagef(texture, sampler, coordsf);
+	float4 color = (float4)(0.5f);
+	float4 newColor = (float4)(1.f, 0.f, 0.f, color.w);
+	write_imagef(texture2, coords, newColor);
+}
