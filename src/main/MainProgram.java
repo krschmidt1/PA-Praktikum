@@ -40,8 +40,8 @@ public class MainProgram {
 	private boolean running = true;
 
 	////// PARAMETERS
-	private int elements         = 1<<10; // 2^n = 1<<n // we want 1<<16 
-	private int spawnElements    = 1<<4;  // we want 1<< 5-7
+	private int elements         = 1<<16; // 2^n = 1<<n // we want 1<<16 
+	private int spawnElements    = 1<<7;  // we want 1<< 5-7
 	private long respawnInterval = 100; // milliseconds
 	
 	////// SHARED BLOCK
@@ -55,6 +55,7 @@ public class MainProgram {
 	private CLCommandQueue oooQueue = null;
 	private CLProgram program    = null;
 	private CLKernel kernelMove  = null;
+	private CLKernel kernelShift  = null;
 	private CLKernel kernelSpawn = null;
     private CLKernel kernelBitonic     = null;
     private CLKernel kernelBitonicUp   = null;
@@ -135,6 +136,10 @@ public class MainProgram {
         OpenCL.clSetKernelArg(kernelMove, 0, memPositions);
         OpenCL.clSetKernelArg(kernelMove, 1, memVelocities);
         OpenCL.clSetKernelArg(kernelMove, 2, memLifetimes);
+
+        OpenCL.clSetKernelArg(kernelShift, 0, memPositions);
+        OpenCL.clSetKernelArg(kernelShift, 1, memVelocities);
+        OpenCL.clSetKernelArg(kernelShift, 2, memLifetimes);
         
         OpenCL.clSetKernelArg(kernelSpawn, 0, memPositions);
         OpenCL.clSetKernelArg(kernelSpawn, 1, memVelocities);
@@ -193,7 +198,7 @@ public class MainProgram {
                         bufferNewParticleData.put(i + j++, ParticleFactory.generateLifetime());
                     }
                     
-        	        sortParticles(elements);
+        	        shiftParticles();
         	        
                     if(memNewParticles != null) {
                         OpenCL.clReleaseMemObject(memNewParticles);
@@ -226,6 +231,18 @@ public class MainProgram {
 		}
 		System.out.println("Program shut down properly.");
 	}
+	
+	
+	private void shiftParticles() {
+		PointerBuffer gws = new PointerBuffer(1);
+        //gws.put(0, elements-spawnElements);
+        gws.put(0, 1);
+        OpenCL.clSetKernelArg(kernelShift, 4, spawnElements);
+        OpenCL.clSetKernelArg(kernelShift, 3, elements-spawnElements);
+        
+        OpenCL.clEnqueueNDRangeKernel(queue, kernelShift, 1, null, gws, null, null, null);
+	}
+	
 	
 	/**
      * 
@@ -304,7 +321,7 @@ public class MainProgram {
 		
         // present screen
         Display.update();
-        Display.sync(60);
+//        Display.sync(60);
 	}
 	
 	private void handleInput(long deltaTime) {
@@ -378,6 +395,7 @@ public class MainProgram {
         OpenCL.clBuildProgram(program, pair.device, "", null);
         
         kernelMove  = OpenCL.clCreateKernel(program, "move");
+        kernelShift = OpenCL.clCreateKernel(program, "shift");
         kernelSpawn = OpenCL.clCreateKernel(program, "respawn");
         // TODO other kernels
         kernelBitonic     = OpenCL.clCreateKernel(program, "bitonicSort");
@@ -405,6 +423,7 @@ public class MainProgram {
             OpenCL.clReleaseMemObject(memNewParticles);
         
         OpenCL.clReleaseKernel(kernelSpawn);
+        OpenCL.clReleaseKernel(kernelShift);
         OpenCL.clReleaseKernel(kernelMove);
         
         // TODO SORT

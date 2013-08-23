@@ -21,6 +21,29 @@ kernel void move(global float* positions, global float* velocities, global float
 		
 }
 
+kernel void shift(global float* positions, global float* velocities, global float* lifetimes, const int size, const int n) 
+{
+	//uint id = get_global_id(0);
+	//uint size = get_global_size(0);
+	
+	//uint id3 = (size*3)+id*3;
+	//uint id2 = (size*2)+id*2;
+	
+	for(int id = 0; id < size; id++) {
+		positions[(size+n-1)*3-id*3]     = positions[(size-1)*3-id*3];
+		positions[(size+n-1)*3-id*3 + 1] = positions[(size-1)*3-id*3 + 1];
+		positions[(size+n-1)*3-id*3 + 2] = positions[(size-1)*3-id*3 + 2];
+	
+		velocities[(size+n-1)*3-id*3]     = velocities[(size-1)*3-id*3];
+		velocities[(size+n-1)*3-id*3 + 1] = velocities[(size-1)*3-id*3 + 1];
+		velocities[(size+n-1)*3-id*3 + 2] = velocities[(size-1)*3-id*3 + 2];
+	
+		lifetimes[(size+n-1)*2-id*2]     = lifetimes[(size-1)*2-id*2];
+		lifetimes[(size+n-1)*2-id*2 + 1] = lifetimes[(size-1)*2-id*2 + 1];
+	}
+}
+
+
 kernel void respawn(global float* positions, global float* velocities, global float* lifetimes, global float* newValues) 
 {
 	uint id = get_global_id(0);
