@@ -12,9 +12,10 @@ import pa.util.math.MathUtil;
 
 public class ParticleFactory {
     private static Random rng = new Random();
+    private static int numberOfProperties = 3 + 3 + 2;
 		
 	public static float[] generateCoordinates() {
-        float maxRadius = 0.35f;
+        float maxRadius = 1.0f;
         float radius = rng.nextFloat() * maxRadius - maxRadius / 2.0f;
         float phi    = rng.nextFloat() * Util.PI_MUL2;
         float theta  = rng.nextFloat() * Util.PI_DIV2;
@@ -26,8 +27,8 @@ public class ParticleFactory {
                 };
 	}
 	
-	public static float generateLifetime() {
-	    return rng.nextFloat() * 14000 + 2000;
+	public static float lifetime() {
+	    return rng.nextFloat() * 2000.0f + 8000.0f;
 	}
 	
 	public static float[] generateVelocity() {
@@ -51,24 +52,24 @@ public class ParticleFactory {
 
     public static FloatBuffer createLPA(int n) {
 		FloatBuffer fb = BufferUtils.createFloatBuffer(n * 3);
-		
-		int[] levels = new int[] {
-					(int)(0.3 * n),
-					(int)(0.4 * n),
-					(int)(0.2 * n),
-					(int)(0.1 * n)
-		};
-		for(int level = 0; level < levels.length; level++) {
-			for(int i = 0; i < levels[level]; i++) {
-				float radius = 0.08f * levels[level];
-				float a = rng.nextFloat();
-				float b = rng.nextFloat();
-				float x = (a * radius - radius / 2.0f) * MathUtil.cos(b * Util.PI_MUL2);
-				float y = 0.3f * level + (rng.nextFloat() * 0.1f - 0.05f) - 0.3f;
-				float z = (a * radius - radius / 2.0f) * MathUtil.sin(b * Util.PI_MUL2);
-//				System.out.println(radius + ", " + x + ", " + y + ", " + z);
-				fb.put(new float[]{x,y,z});
+
+		float[] r = new float[]{0.3f, 0.5f, 0.35f, 0.2f, 0.1f};
+		float[] phi = new float[6];
+		for(int i = 0; i < 6; i++) 
+		{
+			phi[i] = (float)i/6.0f * MathUtil.PI_MUL2;
+		}
+		float y = -0.2f;
+		for(int i = 0; i < 5; i++) {
+			for(int j = 0; j < 6; j++) {
+				float x = r[i] * MathUtil.cos(phi[j]);
+				float z = r[i] * MathUtil.sin(phi[j]);
+//				System.out.println(x + ", " + y + ", " + z);
+				fb.put(x);
+				fb.put(y);
+				fb.put(z);
 			}
+			y+=0.2f;
 		}
 		fb.rewind();
 		return fb;
