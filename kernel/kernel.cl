@@ -1,31 +1,95 @@
-float3 closestLPAdirection(global float* lpas, float3 position)
+void reorder(
+	float4* distances, 
+	int4* ids
+	) 
 {
-	float3 close = (float3)(0.0f, 1.0f, 0.0f);
+	if((*distances).w < (*distances).z)
+	{
+		float fTmp = (*distances).w;
+		(*distances).w = (*distances).z;
+		(*distances).z = fTmp;
+		int iTmp = (*ids).w;
+		(*ids).w = (*ids).z;
+		(*ids).z = iTmp;
+	}
+	if((*distances).z < (*distances).y)
+	{
+		float fTmp = (*distances).z;
+		(*distances).z = (*distances).y;
+		(*distances).y = fTmp;
+		int iTmp = (*ids).z;
+		(*ids).z = (*ids).y;
+		(*ids).y = iTmp;
+	}
+	if((*distances).y < (*distances).x)
+	{
+		float fTmp = (*distances).y;
+		(*distances).y = (*distances).x;
+		(*distances).x = fTmp;
+		int iTmp = (*ids).y;
+		(*ids).y = (*ids).x;
+		(*ids).x = iTmp;
+	}
+}
+
+float3 closestLPAdirection(
+	global float* lpas, 
+	const int numLPA, 
+	const float3 position, 
+	const int randIndex
+	)
+{
+	float3 close = (float3)(0.0f, 2.0f, 0.0f);
 	
-	float distance = length(close - position);
+	// distance.w is the biggest
+	int4 ids = (int4)(-1);
+	float4 distance = (float4) length(close - position);
 	
 	float dist = 0;
 	float3 curLPA;
-	for(int i = 0; i < 30; i+=3)
+	for(int i = 0; i < numLPA; i+=3)
 	{
 		curLPA = (float3)(lpas[i], lpas[i+1], lpas[i+2]);
 		if(curLPA.y > position.y)
 		{
 			dist = length(curLPA - position);
-			if(dist < distance)
+			if(dist < distance.w)
 			{
-				distance = dist;
-				close = curLPA;
+				distance.w = dist;
+				ids.w = i;
+				reorder(&distance, &ids);
 			}
 		}
 	}
 	
+	int id;
+	switch(randIndex)
+	{
+		case 0: id = ids.x; break;
+		case 1: id = ids.y; break;
+		case 2: id = ids.z; break;
+		case 3: id = ids.w; break; 
+	}
+	
+	if(id != -1)
+		close = (float3)(lpas[id], lpas[id+1], lpas[id+2]);
+	
 	return normalize(close - position);
 }
 
-kernel void move(global float* positions, global float* velocities, global float* lifetimes, global float* lowPressureAreas, const int dTime)
+kernel void move(
+	global float* positions, 
+	global float* velocities, 
+	global float* lifetimes, 
+	global float* lowPressureAreas, 
+	const global int* randIndexLPA, 
+	const int numLPA, 
+	const int dTime,
+	const int pulse // dirty test hack
+	)
 {
 	const uint id = get_global_id(0);
+	const uint size = get_global_size(0);
 	
 	const float lifetime = lifetimes[id * 2] - ((float)dTime);
 	
@@ -46,8 +110,12 @@ kernel void move(global float* positions, global float* velocities, global float
 	float3 newPosition = (float3)0.0f;
 	float3 newVelocity = (float3)0.0f;
 	
-	newVelocity = normalize(velocity) * 0.9995f + closestLPAdirection(lowPressureAreas, position) * 0.0005f;
+	newVelocity = normalize(velocity) * 0.998f 
+				+ closestLPAdirection(lowPressureAreas, numLPA, position, randIndexLPA[id]) * 0.002f;
 	newPosition = position + newVelocity * speed;
+	
+	// dirty test hack
+	if(newPosition.y > 0.0f) newVelocity += pulse * newPosition.y * (float3)(1.0f, 0.0f, 0.0f);
 	
 	
 	
@@ -65,7 +133,14 @@ kernel void move(global float* positions, global float* velocities, global float
 	
 }
 
-kernel void respawn(global float* positions, global float* velocities, global float* lifetimes, global float* newValues, const int numElements, const int offset) 
+kernel void respawn(
+	global float* positions, 
+	global float* velocities, 
+	global float* lifetimes, 
+	global float* newValues, 
+	const int numElements, 
+	const int offset
+	) 
 {
 	const uint newId = get_global_id(0);
 	const uint oldId = (newId + offset) % numElements; 
@@ -80,4 +155,13 @@ kernel void respawn(global float* positions, global float* velocities, global fl
 	velocities[oldId * 3 + 2] = newValues[newId * numParams + 5];
 	lifetimes [oldId * 2]     = newValues[newId * numParams + 6];
 	lifetimes [oldId * 2 + 1] = 1.0f;
+}
+
+kernel void moveLPA(
+	global float* positions, 
+	global const float* diff
+	) 
+{
+	const uint id = get_global_id(0); 
+	positions[id] += diff[id];
 }
