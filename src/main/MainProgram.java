@@ -28,6 +28,8 @@ import opengl.util.ShaderProgram;
 import org.lwjgl.LWJGLException;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.util.vector.Matrix4f;
+import org.lwjgl.util.vector.Vector2f;
+import org.lwjgl.util.vector.Vector3f;
 
 import particle.ParticleFactory;
 import opengl.util.FrameBuffer;
@@ -76,8 +78,20 @@ public class MainProgram {
 
 	private int textureUnit = 0;
 	private ShaderProgram depthSP = null;
-	private FrameBuffer depthFB   = null;
-	private Texture depthTex      = null;
+	private ShaderProgram glowSP  = null;
+	private ShaderProgram blurSP  = null;
+	private ShaderProgram finalSP  = null;
+	private FrameBuffer depthFB = null;
+	private FrameBuffer glowFB  = null;
+	private FrameBuffer hBlurFB = null;
+	private FrameBuffer vBlurFB = null;
+	private FrameBuffer finalFB = null;
+	private Texture depthTex = null;
+	private Texture glowTex  = null;
+	private Texture noiseTex = null;
+	private Texture hBlurTex = null;
+	private Texture vBlurTex = null;
+	private Texture finalTex = null;
 
 	////// other
 	private long lastTimestamp  = System.currentTimeMillis();
@@ -307,6 +321,7 @@ public class MainProgram {
 		depthSP.setUniform("model", modelMat);
 		depthSP.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
         depthSP.setUniform("camPos", cam.getCamPos());
+        depthSP.setUniform("noiseTex", noiseTex);
 
         depthFB.bind();
         depthFB.clearColor();
@@ -317,15 +332,67 @@ public class MainProgram {
         glBindVertexArray(vertexArrayID);
         opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, elements);
 
+//        glowSP.use();
+//        glowSP.setUniform("model", modelMat);
+//        glowSP.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
+//        glowSP.setUniform("camPos", cam.getCamPos());
+//        glowSP.setUniform("depthTex", depthTex);
+//        glowSP.setUniform("TexelSize", new Vector3f(1.0f/WIDTH, 1.0f/HEIGHT, 0.0f));
+//        glowSP.setUniform("Sample0", depthTex);
+//        glowSP.setUniform("Orientation", 0);
+//        glowSP.setUniform("BlurAmount", 10);
+//        glowSP.setUniform("BlurScale", 2.0f);
+//        glowSP.setUniform("BlurStrength", 0.4f);
+//
+//        glowFB.bind();
+//        glowFB.clearColor();
+        
+        blurSP.use();
+        blurSP.setUniform("tex", depthTex);
+        blurSP.setUniform("dir", 1);
+        hBlurFB.bind();
+        hBlurFB.clearColor();
+        
+//        glEnable(GL_BLEND);
+//        glDisable(GL_DEPTH_TEST);
+//        
+//        glBindVertexArray(vertexArrayID);
+//        opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, elements);
+		screenQuad.draw();
+
+        glowSP.setUniform("Sample0", glowTex);
+        glowSP.setUniform("Orientation", 1);
+        blurSP.setUniform("tex", hBlurTex);
+        blurSP.setUniform("dir", 0);
+        vBlurFB.bind();
+        vBlurFB.clearColor();
+
+		screenQuad.draw();
+		
         glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);
 		
-		
-		// draw texture on screenquad
+        finalSP.use();
+        finalSP.setUniform("depthTex", depthTex);
+        finalSP.setUniform("blurTex", vBlurTex);
+//        finalSP.setUniform("tex", hBlurTex);
+//        finalSP.setUniform("dir", 0);
+//        finalFB.bind();
+//        finalFB.clearColor();
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		screenQuadSP.use();        
-		screenQuadSP.setUniform("image", depthTex);
+
 		screenQuad.draw();
+		
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+		
+        
+//		// draw texture on screenquad
+//        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+//		screenQuadSP.use();        
+//		screenQuadSP.setUniform("image", finalTex);
+////		screenQuadSP.setUniform("image2", glowTex);
+//		screenQuad.draw();
 		
         // present screen
         Display.update();
@@ -371,7 +438,60 @@ public class MainProgram {
         depthFB.addTexture(depthTex, GL_RGBA16F, GL_RGBA);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glBindFragDataLocation(depthSP.getId(), 0, "depth");
+        glBindFragDataLocation(depthSP.getId(), 0, "PixelColor");
+        
+        // second renderpath: "glow"
+        glowSP = new ShaderProgram("./shader/GlowVS.glsl", "./shader/GlowFS.glsl");
+        glowSP.use();
+        
+        glowFB = new FrameBuffer();
+        glowFB.init(true, WIDTH, HEIGHT);
+
+        glowTex = new Texture(GL_TEXTURE_2D, textureUnit++);
+        glowFB.addTexture(glowTex, GL_RGBA16F, GL_RGBA);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFragDataLocation(glowSP.getId(), 0, "PixelColor");
+        
+        // renderpath: "blur"
+        blurSP = new ShaderProgram("./shader/ScreenQuad_VS.glsl", "./shader/Blur_FS.glsl");
+        blurSP.use();
+        
+        hBlurFB = new FrameBuffer();
+        hBlurFB.init(true, WIDTH, HEIGHT);
+        
+        hBlurTex = new Texture(GL_TEXTURE_2D, textureUnit++);
+        hBlurFB.addTexture(hBlurTex, GL_RGBA16F, GL_RGBA);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFragDataLocation(blurSP.getId(), 0, "PixelColor");
+        
+        vBlurFB = new FrameBuffer();
+        vBlurFB.init(true, WIDTH, HEIGHT);
+        
+        vBlurTex = new Texture(GL_TEXTURE_2D, textureUnit++);
+        vBlurFB.addTexture(vBlurTex, GL_RGBA16F, GL_RGBA);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFragDataLocation(blurSP.getId(), 0, "PixelColor");
+
+        // renderPath: "blur"
+        finalSP = new ShaderProgram("./shader/ScreenQuad_VS.glsl", "./shader/FinalFS.glsl");
+        finalSP.use();
+        
+        finalFB = new FrameBuffer();
+        finalFB.init(true, WIDTH, HEIGHT);
+        
+        finalTex = new Texture(GL_TEXTURE_2D, textureUnit++);
+        finalFB.addTexture(finalTex, GL_RGBA16F, GL_RGBA);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFragDataLocation(finalSP.getId(), 0, "PixelColor");
+        
+        // noise texture
+        noiseTex = Texture.generateTexture("./res/perlin.png", textureUnit++);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glBlendFunc(GL_ONE, GL_ONE);
@@ -415,6 +535,7 @@ public class MainProgram {
 	    // TODO: Nullchecks
         running = false;
         
+        glowSP.delete();
         screenQuadSP.delete();
         depthSP.delete();
         // TODO cleanup (possible) additional sps
