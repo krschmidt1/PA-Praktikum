@@ -13,6 +13,7 @@ out vec2 lifetime;
 
 void main(void)
 {
+//	vec2 normalMC = vec2(10);
     lifetime     = normalMC;
     FragmentPos  = model * vec4(positionMC, 1.0);
     gl_Position  = viewProj * FragmentPos;

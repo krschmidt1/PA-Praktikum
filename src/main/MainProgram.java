@@ -8,6 +8,7 @@ import org.lwjgl.PointerBuffer;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opencl.CL10;
+import org.lwjgl.opencl.CL10GL;
 import org.lwjgl.opencl.CLCommandQueue;
 import org.lwjgl.opencl.CLContext;
 import org.lwjgl.opencl.CLKernel;
@@ -28,6 +29,8 @@ import opengl.util.ShaderProgram;
 
 import org.lwjgl.LWJGLException;
 import org.lwjgl.opengl.Display;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL30;
 import org.lwjgl.util.vector.Matrix4f;
 import org.lwjgl.util.vector.Vector3f;
 
@@ -42,7 +45,7 @@ public class MainProgram {
 
 	////// PARAMETERS
 	private int elements           = 1<<17; // 2^n = 1<<n // we want 1<<16 
-	private int spawnElements      = 1<<10;  // we want 1<< 5-7
+	private int spawnElements      = 1<<7;  // we want 1<< 5-7
 	private long respawnInterval   = 100; // milliseconds
 	private long changeLPAInterval = 500;
 	private int numberLPA          = 1<<5; // number of low pressure areas
@@ -69,6 +72,7 @@ public class MainProgram {
 	private Matrix4f modelMat  = new Matrix4f();
 	private Camera   cam       = new Camera();
 	private int vertexArrayID  = -1;
+	private int pressureArray = -1;
 	
 	private Geometry screenQuad        = null;
 	private ShaderProgram screenQuadSP = null;
@@ -127,6 +131,8 @@ public class MainProgram {
         
         glEnableVertexAttribArray(ShaderProgram.ATTR_NORMAL);
         glVertexAttribPointer(ShaderProgram.ATTR_NORMAL, 2, GL_FLOAT, false, 2 * SizeOf.FLOAT, 0);
+        
+        glBindVertexArray(0);
 	}
 
 	public void run() {
@@ -159,6 +165,7 @@ public class MainProgram {
         // create indices for LPA seeking
         IntBuffer bufferRandIndices = BufferUtils.createIntBuffer(elements);
         System.out.println("Using " + numberLPA + " low pressure areas.");
+       
 
         // spawn first LPAs
         
@@ -169,7 +176,19 @@ public class MainProgram {
 		} else { 
 			pressureAreas = ParticleFactory.createLPA(numberLPA);
 		}
-        memLPAs = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_WRITE, pressureAreas);
+        
+        pressureArray = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(pressureArray);
+        int pbufffer = GL15.glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, pbufffer);
+		glBufferData(GL_ARRAY_BUFFER, pressureAreas, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(ShaderProgram.ATTR_POS);
+        glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3 * SizeOf.FLOAT, 0);
+        GL30.glBindVertexArray(0);
+        
+        //memLPAs = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_WRITE, pressureAreas);
+        memLPAs = CL10GL.clCreateFromGLBuffer(context, 0, pbufffer, null);
+        
         
         while(running) {
 			long deltaTime = System.currentTimeMillis() - lastTimestamp;
@@ -180,11 +199,19 @@ public class MainProgram {
 			
 			handleInput(deltaTime);
 			
+            // MOVE LPA
+			if(!debug) {
+				pressureAreas = ParticleFactory.createLPA(numberLPA);
+		        glBindBuffer(GL_ARRAY_BUFFER, pbufffer);
+				glBufferData(GL_ARRAY_BUFFER, pressureAreas, GL_STATIC_DRAW);
+			}
+			
 			if(animating) {
 				// ACQUIRE OPENGL BUFFERS
     			OpenCL.clEnqueueAcquireGLObjects(queue, memPositions,  null, null);
     			OpenCL.clEnqueueAcquireGLObjects(queue, memVelocities, null, null);
     			OpenCL.clEnqueueAcquireGLObjects(queue, memLifetimes,  null, null);
+    			OpenCL.clEnqueueAcquireGLObjects(queue, memLPAs,  null, null);
     			
     			
     			
@@ -204,21 +231,7 @@ public class MainProgram {
                     }
                     memLPARandoms = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_ONLY, bufferRandIndices);
                     
-                    
-                    
-                    // MOVE LPA
-        			if(!debug) {
-        				pressureAreas = ParticleFactory.createLPA(numberLPA);
-    	                if(memLPAs != null) {
-    	                    OpenCL.clReleaseMemObject(memLPAs);
-    	                    memLPAs = null;
-    	                }
-    	                memLPAs = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_ONLY, pressureAreas);
-        			}
-                    if(showLPA) {
-    	                glBindBuffer(GL_ARRAY_BUFFER, bufferObjectPositions);
-    	        		glBufferData(GL_ARRAY_BUFFER, pressureAreas, GL_STATIC_DRAW);
-                    }
+                 
     	        }
     			
     			
@@ -273,6 +286,7 @@ public class MainProgram {
     			// FREE OPENGL BUFFERS
     	        OpenCL.clEnqueueReleaseGLObjects(queue, memLifetimes,  null, null);
     	        OpenCL.clEnqueueReleaseGLObjects(queue, memVelocities, null, null);
+    	        OpenCL.clEnqueueReleaseGLObjects(queue, memLPAs, null, null);
                 OpenCL.clEnqueueReleaseGLObjects(queue, memPositions,  null, null);
                 
 			}  // if animating
@@ -304,6 +318,9 @@ public class MainProgram {
         
         glBindVertexArray(vertexArrayID);
         opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, elements);
+        
+        glBindVertexArray(pressureArray);
+        opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, numberLPA);
 
         glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);
