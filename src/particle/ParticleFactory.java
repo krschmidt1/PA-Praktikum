@@ -11,13 +11,15 @@ import org.lwjgl.BufferUtils;
 import pa.util.math.MathUtil;
 
 public class ParticleFactory {
+    public static final int PARTICLE_PROPERTIES = 7;
+
     private static Random rng = new Random();
     
     private static float spawnRadius   = 0.1f;
     private static float averageSpawnY = -0.5f;
     private static float spawnHeightY  = 0.1f;
     
-    private static float maxFlameRadius = 0.1f;
+    private static float defaultFlameRadius = 0.1f;
     
     private static long minLifetime = 10000;  // in ms
     private static long maxLifetime = 12000;  // in ms
@@ -61,30 +63,45 @@ public class ParticleFactory {
     
     public static FloatBuffer createLPA(int n) {
 		FloatBuffer fb = BufferUtils.createFloatBuffer(n * 3);
-
-		float[] a = new float[n/8];
 		
-		a[0] = 1.0f;
-		for(int i = 1; i < a.length; i++) {
-			a[i] = ((i<((n/8)*0.3f))?a[i-1]+0.2f*n/8 : (i<((n/8)*0.9f))?a[i-1]-0.1f*n/8:a[0]);
-//			System.out.print(a[i-1]+", ");
+		int lpaPerLevel = 8;
+		int levels = n/lpaPerLevel;
+		
+		// Radius modifier 
+		// TODO needs improvement?
+		float[] modifier = new float[levels];
+		modifier[0] = 1.0f;
+		for(int i = 1; i < modifier.length; i++) {
+		    if(i < levels * 0.3f) {
+		        modifier[i] = modifier[i-1] + 0.2f * levels;
+		    }
+		    else if(i < levels * 0.9f) {
+		        modifier[i] = modifier[i-1] - 0.1f * levels; 
+		    }
+		    else {
+		        modifier[i] = modifier[0];
+		    }
 		}
-//		System.out.println(a[3]);
 		
 		float y = averageSpawnY + spawnHeightY + 0.05f;
-		for(int i = 0; i < n/8; i++) {
-			for(int j = 0; j < 8; j++) {
-				float phi = (float)j/8.0f * MathUtil.PI_MUL2 + rng.nextFloat() * 0.01f - 0.005f;
-				float x = a[i] * maxFlameRadius * MathUtil.cos(phi) * (float)rng.nextGaussian();
-				float varianceY = 0.04f;
-				float curY = y + rng.nextFloat() * varianceY - varianceY / 2.0f;
-//				System.out.println("Cur " + curY);
-				float z = a[i] * maxFlameRadius * MathUtil.sin(phi) * (float)rng.nextGaussian();
+		float varianceY = 0.04f;
+		
+		for(int i = 0; i < levels; i++) {
+			for(int j = 0; j < lpaPerLevel; j++) {
+				
+			    float phi = (float)j/(float)lpaPerLevel * MathUtil.PI_MUL2 + rng.nextFloat() * 0.01f - 0.005f;
+				float radius = (float)rng.nextGaussian() * modifier[i] * defaultFlameRadius;
+				
+				// polar coordinates
+				float x = radius * MathUtil.cos(phi);
+				float z = radius * MathUtil.sin(phi);
+				float curY = y + (float)rng.nextGaussian() * varianceY - varianceY / 2.0f;
+				
 				fb.put(x);
 				fb.put(curY);
 				fb.put(z);
 			}
-			y += (1.0f + Math.abs(averageSpawnY + spawnHeightY))/(n/8);
+			y += (1.0f + Math.abs(averageSpawnY + spawnHeightY))/levels;
 		}
 		fb.rewind();
 		return fb;
@@ -123,4 +140,23 @@ public class ParticleFactory {
 	public static float generateRandomValue(float min, float max) {
 		return min + rng.nextFloat() * (max - min);
 	}
+
+    /**
+     * @param particleData
+     */
+    public static void createNewParticles(FloatBuffer particleData) {
+        for(int i = 0; i < particleData.capacity(); i += PARTICLE_PROPERTIES) {
+            int j = 0;
+            float[] pos  = ParticleFactory.generateCoordinates();
+            float[] velo = ParticleFactory.generateVelocity();
+            particleData.put(i + j++, pos[0]);
+            particleData.put(i + j++, pos[1]);
+            particleData.put(i + j++, pos[2]);
+            particleData.put(i + j++, velo[0]);
+            particleData.put(i + j++, velo[1]);
+            particleData.put(i + j++, velo[2]);
+            particleData.put(i + j++, ParticleFactory.lifetime());
+        }
+        
+    }
 }
