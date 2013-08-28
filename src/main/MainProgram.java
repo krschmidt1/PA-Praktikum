@@ -332,15 +332,33 @@ public class MainProgram {
         
         glBindVertexArray(vertexArrayID);
         opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, elements);
+//      glowSP.use();
+//      glowSP.setUniform("model", modelMat);
+//      glowSP.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
+//      glowSP.setUniform("camPos", cam.getCamPos());
+//      glowSP.setUniform("depthTex", depthTex);
+//      glowSP.setUniform("TexelSize", new Vector3f(1.0f/WIDTH, 1.0f/HEIGHT, 0.0f));
+//      glowSP.setUniform("Sample0", depthTex);
+//      glowSP.setUniform("Orientation", 0);
+//      glowSP.setUniform("BlurAmount", 10);
+//      glowSP.setUniform("BlurScale", 2.0f);
+//      glowSP.setUniform("BlurStrength", 0.4f);
+//
+//      glowFB.bind();
+//      glowFB.clearColor();
         
-        glDisable(GL_BLEND);
-        glEnable(GL_DEPTH_TEST);
         
         blurSP.use();
         blurSP.setUniform("tex", depthTex);
         blurSP.setUniform("dir", 1);
         hBlurFB.bind();
         hBlurFB.clearColor();
+        
+//      glEnable(GL_BLEND);
+//      glDisable(GL_DEPTH_TEST);
+//      
+//      glBindVertexArray(vertexArrayID);
+//      opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, elements);
         
         screenQuad.draw();
 
@@ -350,7 +368,7 @@ public class MainProgram {
         blurSP.setUniform("dir", 0);
         vBlurFB.bind();
         vBlurFB.clearColor();
-
+        
         screenQuad.draw();
         
         glDisable(GL_BLEND);
@@ -359,7 +377,10 @@ public class MainProgram {
         finalSP.use();
         finalSP.setUniform("depthTex", depthTex);
         finalSP.setUniform("blurTex", vBlurTex);
-        
+//      finalSP.setUniform("tex", hBlurTex);
+//      finalSP.setUniform("dir", 0);
+//      finalFB.bind();
+//      finalFB.clearColor();
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         screenQuad.draw();
         
@@ -380,6 +401,9 @@ public class MainProgram {
             lpaSP.setUniform("model", modelMat);
             lpaSP.setUniform("viewProj", viewProj);
             lpaSP.setUniform("camPos", cam.getCamPos());
+            
+            glDisable(GL_BLEND);
+            glDisable(GL_DEPTH_TEST);
             
             glBindVertexArray(lpaVAID);
             opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, numberLPA);
