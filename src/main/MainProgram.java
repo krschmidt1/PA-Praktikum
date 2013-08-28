@@ -323,22 +323,26 @@ public class MainProgram {
         glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);
         
-        // show low pressure areas with a blue tone
+		// draw texture on screenquad
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		screenQuadSP.use();        
+		screenQuadSP.setUniform("image", depthTex);
+		screenQuad.draw();
+		
+
+		// show low pressure areas with a blue tone
         if(showLPA) {
             lpaSP.use();
             lpaSP.setUniform("model", modelMat);
             lpaSP.setUniform("viewProj", viewProj);
             lpaSP.setUniform("camPos", cam.getCamPos());
             
+            glDisable(GL_BLEND);
+            glDisable(GL_DEPTH_TEST);
+            
             glBindVertexArray(lpaVAID);
             opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, numberLPA);
         }
-        
-		// draw texture on screenquad
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		screenQuadSP.use();        
-		screenQuadSP.setUniform("image", depthTex);
-		screenQuad.draw();
 		
         // present screen
         Display.update();
