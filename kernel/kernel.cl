@@ -32,7 +32,7 @@ void reorder(
 	}
 }
 
-float3 closestLPAdirection(
+const float3 closestLPAdirection(
 	global float* lpas, 
 	const int numLPA, 
 	const float3 position, 
@@ -50,7 +50,7 @@ float3 closestLPAdirection(
 	for(int i = 0; i < numLPA; i+=3)
 	{
 		curLPA = (float3)(lpas[i], lpas[i+1], lpas[i+2]);
-		if(curLPA.y > position.y)
+		if(curLPA.y-0.2f > position.y)
 		{
 			dist = length(curLPA - position);
 			if(dist < distance.w)
@@ -89,18 +89,16 @@ kernel void move(
 	)
 {
 	const uint id = get_global_id(0);
-	const uint size = get_global_size(0);
-	
 	const float lifetime = lifetimes[id * 2] - ((float)dTime);
 	
 	if(lifetime <= 0.0f) 
 	{
-		lifetimes[id * 2]     = -10000.0f;
+		lifetimes[id * 2]     = 0.0f;
 		lifetimes[id * 2 + 1] = 0.0f;
 		return;
 	}
 	
-	const float baseSpeed = 0.0001f;
+	const float baseSpeed     = 0.001f;
 	const float speed = baseSpeed * ((float)dTime);
 
 	const float  alive    = lifetimes[id * 2 + 1];
@@ -110,14 +108,14 @@ kernel void move(
 	float3 newPosition = (float3)0.0f;
 	float3 newVelocity = (float3)0.0f;
 	
-	newVelocity = normalize(velocity) * 0.998f 
-				+ closestLPAdirection(lowPressureAreas, numLPA, position, randIndexLPA[id]) * 0.002f;
+																							// TODO: adjust the 2.5f to match
+																							// other particle amounts - this is
+																							// tested for 131 072 particles.
+	newVelocity = mix(normalize(velocity), closestLPAdirection(lowPressureAreas, numLPA, position, randIndexLPA[id]), 2.5f * speed);
 	newPosition = position + newVelocity * speed;
 	
 	// dirty test hack
 	if(newPosition.y > 0.0f) newVelocity += pulse * newPosition.y * (float3)(1.0f, 0.0f, 0.0f);
-	
-	
 	
 
 	
