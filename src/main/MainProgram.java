@@ -208,7 +208,7 @@ public class MainProgram {
             calculateFramesPerSecond(deltaTime);
 
             handleInput(deltaTime);
-            
+
             if(animating) {
                 // MOVE LPA TODO -> in kernel?
                 if(changeLPATimer >= changeLPAInterval) {
@@ -260,7 +260,7 @@ public class MainProgram {
                 
                 // RESPAWN
                 int newCalc = defaultSpawn;
-                newCalc = fps>0? (int)(0.9f * ((elements>>1) / (int)fps)) : defaultSpawn;
+                newCalc = (int)fps>0? (int)(0.9f * ((elements>>1) / (int)fps)) : defaultSpawn;
                 newCalc = Math.max(newCalc, defaultSpawn);
              
                 // resize respawn buffer if needed
@@ -296,7 +296,6 @@ public class MainProgram {
                 OpenCL.clEnqueueReleaseGLObjects(queue, memVelocities, null, null);
                 OpenCL.clEnqueueReleaseGLObjects(queue, memLPAs, null, null);
                 OpenCL.clEnqueueReleaseGLObjects(queue, memPositions,  null, null);
-                
             }  // if animating
         
             drawScene();
