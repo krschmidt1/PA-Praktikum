@@ -29,7 +29,9 @@ import opengl.util.ShaderProgram;
 
 import org.lwjgl.LWJGLException;
 import org.lwjgl.opengl.Display;
+import org.lwjgl.opengl.GL11;
 import org.lwjgl.util.vector.Matrix4f;
+import org.lwjgl.util.vector.Vector2f;
 import org.lwjgl.util.vector.Vector3f;
 
 import particle.ParticleFactory;
@@ -42,10 +44,11 @@ public class MainProgram {
 	private boolean running = true;
 
 	////// PARAMETERS
-	private int elements           = 1<<17; // we want 1<<17
-	private int defaultSpawn       = 1<<7;  // we want 1<<7   
+	private int  elements          = 1<<17; // we want 1<<17
+	private int  defaultSpawn      = 1<<7;  // we want 1<<7   
 	private long changeLPAInterval = 1<<7;  // we want 1<<7
-	private int numberLPA          = 1<<6;  // we want 1<<6
+	private int  numberLPA         = 1<<6;  // we want 1<<6
+	private long mouseThreshold    = 200;
 	
 	////// SHARED BLOCK
 	private int bufferObjectPositions  = -1;
@@ -83,30 +86,60 @@ public class MainProgram {
 	private Texture depthTex      = null;
 
 	////// other
-	private long lastTimestamp  = System.currentTimeMillis();
-	private long sumDeltaTime   = 0;
-	private int  numberOfFrames = 0;
-	private float fps           = 0;
-	private long changeLPATimer = changeLPAInterval; 
-	private int  spawnOffset    = 0;
-	private int  spawnElements  = defaultSpawn;
-	private Vector3f moveDir    = new Vector3f(0.0f,0.0f,0.0f);
-	private boolean showLPA     = false;
-	private boolean animating   = true;
-	private boolean debug       = false;
-	private boolean fpsControl  = false;
+	private long lastTimestamp   = System.currentTimeMillis();
+	private long sumDeltaTime    = 0;
+	private int  numberOfFrames  = 0;
+	private float fps            = 0;
+	private long changeLPATimer  = changeLPAInterval; 
+	private int  spawnOffset     = 0;
+	private int  spawnElements   = defaultSpawn;
+	private long mouseDelay      = 0;
+	private Vector3f moveDir     = new Vector3f(0.0f,0.0f,0.0f);
+	private boolean showLPA      = false;
+	private boolean animating    = true;
+	private boolean debug        = false;
+	private boolean fpsControl   = false;
+	private boolean mousePressed = false;
 	
 	// TODO dirty hack
 	private boolean pulse = false;
-	
+	private Vector3f pulseDir = new Vector3f(0.0f, 0.0f, 0.0f);
+	private Vector2f mouseMovement = new Vector2f(0.0f, 0.0f);
+
+	/**
+	 * Ctor.
+	 */
 	public MainProgram() {
-	    initGL();
-		initCL();
-	    initParticleBuffers();
-	    printControls();
+	    
 	}
 	
-	private void initParticleBuffers() {
+	/**
+	 * Initializes OpenGL, OpenCL, particles etc.
+	 * @return true if everything works fine.
+	 */
+	public boolean init() {
+		boolean success = true;
+		
+		if(success)
+			success = initGL();
+		
+		if(success)
+			success = initCL();
+		
+		if(success)
+			success = initParticleBuffers();
+		
+		if(success)
+			printControls();
+
+		return success;
+	}
+	
+	/**
+	 * Initializes the particle buffers and constructs the OpenGL Buffer Objects.
+	 * @return true
+	 */
+	private boolean initParticleBuffers() {
 	    // vertex array for particles (the screen quad uses a different one)
 	    vertexArrayID = glGenVertexArrays();
         glBindVertexArray(vertexArrayID);
@@ -119,6 +152,7 @@ public class MainProgram {
 		
         glEnableVertexAttribArray(ShaderProgram.ATTR_POS);
         glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3 * SizeOf.FLOAT, 0);
+        
         // velocities
         FloatBuffer particleVelocities = ParticleFactory.createZeroFloatBuffer(elements * 3);
         bufferObjectVelocities = glGenBuffers();
@@ -145,9 +179,13 @@ public class MainProgram {
         
         glEnableVertexAttribArray(ShaderProgram.ATTR_POS);
         glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3 * SizeOf.FLOAT, 0);
-
+        
+        return true;
 	}
 	
+	/**
+	 * Initializes shared Buffers, sets Kernel args and holds the main Loop.
+	 */
 	public void run() {
 		memPositions  = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectPositions);
 		memVelocities = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectVelocities);
@@ -198,28 +236,16 @@ public class MainProgram {
 			handleInput(deltaTime);
 			
 			if(animating) {
-			    // MOVE LPA TODO -> in kernel?
+				// GENERATE NEW LPA, CHANGE WHICH LPA IS USED 
                 if(changeLPATimer >= changeLPAInterval) {
-                    bufferLPA = ParticleFactory.createLPA(numberLPA);
+                	changeLPATimer = 0;
+
+                	bufferLPA = ParticleFactory.createLPA(numberLPA);
                     glBindBuffer(GL_ARRAY_BUFFER, bufferObjectLPA);
                     glBufferData(GL_ARRAY_BUFFER, bufferLPA, GL_STATIC_DRAW);
-                }
-                
-				// ACQUIRE OPENGL BUFFERS
-    			OpenCL.clEnqueueAcquireGLObjects(queue, memPositions,  null, null);
-    			OpenCL.clEnqueueAcquireGLObjects(queue, memVelocities, null, null);
-    			OpenCL.clEnqueueAcquireGLObjects(queue, memLifetimes,  null, null);
-    			OpenCL.clEnqueueAcquireGLObjects(queue, memLPAs,  null, null);
-    			
-    			
-    			
-    			// SET RANDOM PARAMS
-    			if(changeLPATimer >= changeLPAInterval) {
-    	        	changeLPATimer = 0;
-    	        	int[] a = new int[4];
+    	        	
                     for(int i = 0; i < elements; i++) {
                     	int id = (int)((numberLPA * numberLPA * ParticleFactory.lifetime() + numberLPA * ParticleFactory.lifetime() + numberLPA)) % 4;
-                    	a[id]+=1;
                     	bufferRandIndices.put(i, id);
                     }
                     
@@ -228,7 +254,13 @@ public class MainProgram {
                     	memLPARandoms = null;
                     }
                     memLPARandoms = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_ONLY, bufferRandIndices);
-    	        }
+                }
+                
+				// ACQUIRE OPENGL BUFFERS
+    			OpenCL.clEnqueueAcquireGLObjects(queue, memPositions,  null, null);
+    			OpenCL.clEnqueueAcquireGLObjects(queue, memVelocities, null, null);
+    			OpenCL.clEnqueueAcquireGLObjects(queue, memLifetimes,  null, null);
+    			OpenCL.clEnqueueAcquireGLObjects(queue, memLPAs,       null, null);
     			
     			
     			
@@ -282,7 +314,7 @@ public class MainProgram {
                 // FREE OPENGL BUFFERS
     	        OpenCL.clEnqueueReleaseGLObjects(queue, memLifetimes,  null, null);
     	        OpenCL.clEnqueueReleaseGLObjects(queue, memVelocities, null, null);
-    	        OpenCL.clEnqueueReleaseGLObjects(queue, memLPAs, null, null);
+    	        OpenCL.clEnqueueReleaseGLObjects(queue, memLPAs,       null, null);
                 OpenCL.clEnqueueReleaseGLObjects(queue, memPositions,  null, null);
                 
 			}  // if animating
@@ -301,6 +333,9 @@ public class MainProgram {
 		System.out.println("Program shut down properly.");
 	}
 	
+	/**
+	 * renders the scene
+	 */
     public void drawScene() {
         Matrix4f viewProj = opengl.util.Util.mul(null, cam.getProjection(), cam.getView());
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -329,7 +364,6 @@ public class MainProgram {
 		screenQuadSP.setUniform("image", depthTex);
 		screenQuad.draw();
 		
-
 		// show low pressure areas with a blue tone
         if(showLPA) {
             lpaSP.use();
@@ -350,12 +384,17 @@ public class MainProgram {
             Display.sync(60);
 	}
     
+    /**
+     * Handle keyboard and mouse inputs
+     * @param deltaTime the time of the current frame.
+     */
 	private void handleInput(long deltaTime) {
         float speed = 1e-3f * deltaTime;
         float moveSpeed = 1e-3f * (float)deltaTime;
 
+        // KEYBOARD HANDLING
         while(Keyboard.next()) {
-            if(Keyboard.getEventKeyState()) {
+            if(Keyboard.getEventKeyState()) {	// KEY DOWN
                 switch(Keyboard.getEventKey()) {
                     case Keyboard.KEY_W: moveDir.z += 1.0f; break;
                     case Keyboard.KEY_S: moveDir.z -= 1.0f; break;
@@ -364,7 +403,7 @@ public class MainProgram {
                     case Keyboard.KEY_SPACE: moveDir.y += 1.0f; break;
                     case Keyboard.KEY_C: moveDir.y -= 1.0f; break;
                 }
-            } else {
+            } else { // KEY UP
                 switch(Keyboard.getEventKey()) {
                     case Keyboard.KEY_W:     moveDir.z -= 1.0f; break;
                     case Keyboard.KEY_S:     moveDir.z += 1.0f; break;
@@ -383,34 +422,57 @@ public class MainProgram {
                                              break;
                                              
                     case Keyboard.KEY_R: ; break;
-                    // TODO dirty hack (remove -> move to mouse)
-                    case Keyboard.KEY_P: pulse = true; break;
                 }
             }
         }
-        
         cam.move(moveSpeed * moveDir.z, moveSpeed * moveDir.x, moveSpeed * moveDir.y);
 
         
+        // LMB PRESSED HANDLING
+        if(mousePressed) {
+        	mouseDelay += deltaTime;
+        	if(mouseDelay >= mouseThreshold) {
+        		if(debug) 
+        			System.out.println("LMB released");
+        		mouseDelay   = 0;
+        		mousePressed = false;
+        		mouseMovement.x -= Mouse.getX();
+        		mouseMovement.y -= Mouse.getY();
+        		if(debug)
+        			System.out.println("Mouse difference: " + mouseMovement);
+        		pulse = true;
+        	}
+        }
+        
+        // GENERAL MOUSE HANDLING
         while(Mouse.next()) {
             if(Mouse.isButtonDown(1)) {
                 cam.rotate(-speed*Mouse.getEventDX(), -speed*Mouse.getEventDY());
             }
             if(Mouse.isButtonDown(0)) {
-                // TODO pushing
-                if(debug)
-                    System.out.println("LMB press!");
+            	if(!mousePressed) {
+            		if(debug) 
+            			System.out.println("LMB press!");
+            		mousePressed = true;
+            		mouseMovement.set(Mouse.getX(), Mouse.getY());
+            	}
+            	mouseDelay = 0;
             }
         }
     }
 	
-	private void initGL() {
+	/**
+	 * Initializes OpenGL, including the shader programs.
+	 * @return true if initialization was successful.
+	 */
+	private boolean initGL() {
         try {
             GL.init();
         } catch (LWJGLException e) {
-            e.printStackTrace();
+        	e.printStackTrace();
+            return false;
         }
-        cam.move(-1.0f, 0, 0);
+        cam.move(-1.0f, 0, 0.4f);
         
         // screenQuad
         screenQuad   = GeometryFactory.createScreenQuad();
@@ -434,9 +496,15 @@ public class MainProgram {
         
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glBlendFunc(GL_ONE, GL_ONE);
+        
+        return true;
     }
 	
-	private void initCL() {
+	/**
+	 * Initializes OpenCL, including the kernels.
+	 * @return true if initialization was successful.
+	 */
+	private boolean initCL() {
         CLUtil.createCL();
         
         PlatformDevicePair pair = null;
@@ -449,7 +517,7 @@ public class MainProgram {
                 
             // query platform and device
             pair = CLUtil.choosePlatformAndDevice(filter);
-        }catch(Exception e) {
+        } catch(Exception e) {
             pair = CLUtil.choosePlatformAndDevice();
         }
         
@@ -462,9 +530,13 @@ public class MainProgram {
         
         kernelMove  = OpenCL.clCreateKernel(program, "move");
         kernelSpawn = OpenCL.clCreateKernel(program, "respawn");
-
+        
+        return true;
     }
 	
+	/**
+	 * Breaks the main Loop, frees resources.
+	 */
 	private void stop() {
         running = false;
         
@@ -515,8 +587,8 @@ public class MainProgram {
     }
 	
 	/**
-	 * calculates FPS
-	 * @param deltaTime
+	 * Calculates FPS
+	 * @param deltaTime current frame time
 	 */
 	private void calculateFramesPerSecond(long deltaTime) {
 		numberOfFrames++;
@@ -529,6 +601,9 @@ public class MainProgram {
         }
 	}
 	
+	/**
+	 * Prints the controls.
+	 */
 	private void printControls() {
 	    String[] keyDesc = new String[]{
 	        "W", "Move for",
@@ -542,9 +617,8 @@ public class MainProgram {
 	        "L", "Show Low Pressure Areas",
 	        "E", "Pause animation",
 	        "H", "debug mode",
-	        "P", "debug pulse (press repeatedly)",
 	        "", "",
-	        "LMB", "Future: Blow the flame",
+	        "LMB", "Push flame (press and move to give direction) -WIP!",
 	        "RMB", "Turn the camera",
 	    };
 	    System.out.println("\nControls:");

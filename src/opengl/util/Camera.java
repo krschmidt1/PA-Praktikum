@@ -98,6 +98,10 @@ public final class Camera {
         return view;
     }
 
+    /**
+     * Getter fuer die Camera Position.
+     * @return camPos
+     */
     public Vector3f getCamPos() {
         return camPos;
     }

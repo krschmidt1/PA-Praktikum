@@ -1,3 +1,4 @@
+// Reorders the float4 values "ids" by "distances", such that the biggest is in .w
 void reorder(
 	float4* distances, 
 	int4* ids
@@ -32,6 +33,7 @@ void reorder(
 	}
 }
 
+// calculates the 4 closes LPAs and returns one randomly
 const float3 closestLPAdirection(
 	global float* lpas, 
 	const int numLPA, 
@@ -39,7 +41,7 @@ const float3 closestLPAdirection(
 	const int randIndex
 	)
 {
-	float3 close = (float3)(0.0f, 2.0f, 0.0f);
+	float3 close = (float3)(0.0f, 10.0f, 0.0f);
 	
 	// distance.w is the biggest
 	int4 ids = (int4)(-1);
@@ -77,6 +79,7 @@ const float3 closestLPAdirection(
 	return normalize(close - position);
 }
 
+// moves particles according to all forces which affect it
 kernel void move(
 	global float* positions, 
 	global float* velocities, 
@@ -115,7 +118,7 @@ kernel void move(
 	newPosition = position + newVelocity * speed;
 	
 	// dirty test hack
-	if(newPosition.y > 0.0f) newVelocity += pulse * newPosition.y * (float3)(1.0f, 0.0f, 0.0f);
+	if(newPosition.y > 0.0f) newVelocity += pulse * newPosition.y * newPosition.y * (float3)(10.0f, 0.0f, 0.0f);
 	
 
 	
@@ -131,6 +134,7 @@ kernel void move(
 	
 }
 
+// respawns a certain amount of particles
 kernel void respawn(
 	global float* positions, 
 	global float* velocities, 
@@ -153,13 +157,4 @@ kernel void respawn(
 	velocities[oldId * 3 + 2] = newValues[newId * numParams + 5];
 	lifetimes [oldId * 2]     = newValues[newId * numParams + 6];
 	lifetimes [oldId * 2 + 1] = 1.0f;
-}
-
-kernel void moveLPA(
-	global float* positions, 
-	global const float* diff
-	) 
-{
-	const uint id = get_global_id(0); 
-	positions[id] += diff[id];
 }

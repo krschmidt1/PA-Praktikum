@@ -7,7 +7,10 @@ public class Main {
 	 */
 	public static void main(String[] args) {
 		MainProgram mainProgram = new MainProgram();
-		mainProgram.run();
+		if(mainProgram.init())
+			mainProgram.run();
+		else
+			System.out.println("Program can not be initialized!");
 	}
 
 }
