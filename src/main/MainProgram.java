@@ -33,6 +33,7 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.util.vector.Matrix4f;
 import org.lwjgl.util.vector.Vector2f;
 import org.lwjgl.util.vector.Vector3f;
+import org.lwjgl.util.vector.Vector4f;
 
 import particle.ParticleFactory;
 import opengl.util.FrameBuffer;
@@ -103,7 +104,7 @@ public class MainProgram {
 	
 	// TODO dirty hack
 	private boolean pulse = false;
-	private Vector3f pulseDir = new Vector3f(0.0f, 0.0f, 0.0f);
+	private Vector4f pulseDir = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
 	private Vector2f mouseMovement = new Vector2f(0.0f, 0.0f);
 
 	/**
@@ -225,10 +226,13 @@ public class MainProgram {
         glBufferData(GL_ARRAY_BUFFER, bufferLPA, GL_STATIC_DRAW);
         memLPAs = CL10GL.clCreateFromGLBuffer(context, 0, bufferObjectLPA, null);
         
+        // init pulse Dir buffer
+        FloatBuffer pulseBuffer = ParticleFactory.createZeroFloatBuffer(5);
+        CLMem memPulse = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_USE_HOST_PTR | OpenCL.CL_MEM_READ_ONLY, pulseBuffer);
+        
         long debugTimer = 0;
         while(running) {
 			long deltaTime = System.currentTimeMillis() - lastTimestamp;
-			debugTimer     += deltaTime;
 			lastTimestamp  += deltaTime;
 			changeLPATimer += deltaTime;
 			calculateFramesPerSecond(deltaTime);
@@ -272,10 +276,22 @@ public class MainProgram {
     			
     			// TODO dirty hack to test
     			OpenCL.clSetKernelArg(kernelMove, 7, pulse?1:0);
-    			if(pulse) pulse = false;
+    			if(pulse) {
+    				pulse = false;
+    				pulseBuffer.put(0, pulseDir.x);
+    				pulseBuffer.put(1, pulseDir.y);
+    				pulseBuffer.put(2, pulseDir.z);
+    				pulseBuffer.put(3, pulseDir.w);
+    				
+    				if(memPulse != null) {
+    					OpenCL.clReleaseMemObject(memPulse);
+    					memPulse = null;
+    				}
+    				memPulse = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_USE_HOST_PTR  | OpenCL.CL_MEM_READ_ONLY, pulseBuffer);
+    			}
+    			OpenCL.clSetKernelArg(kernelMove, 8, memPulse);
     			
     			OpenCL.clEnqueueNDRangeKernel(queue, kernelMove, 1, null, gws, null, null, null);
-    			
     			
     			
     			// RESPAWN
@@ -321,10 +337,6 @@ public class MainProgram {
 		
 			drawScene();
 
-			if(debugTimer >= 1000) {
-                debugTimer = 0;
-            }
-			
             // if close is requested: close
 			if(Display.isCloseRequested() || Keyboard.isKeyDown(Keyboard.KEY_ESCAPE)) {
 				stop();
@@ -440,7 +452,13 @@ public class MainProgram {
         		mouseMovement.y -= Mouse.getY();
         		if(debug)
         			System.out.println("Mouse difference: " + mouseMovement);
-        		pulse = true;
+        		if(mouseMovement.length() != 0.0f) {
+	        		pulse = true;
+	        		pulseDir.set(mouseMovement.x, -mouseMovement.y);
+	        		pulseDir.normalise();
+	        		pulseDir.w = 10.0f * mouseMovement.lengthSquared()/(WIDTH*WIDTH + HEIGHT*HEIGHT);
+	        		System.out.println(pulseDir);
+        		}
         	}
         }
         

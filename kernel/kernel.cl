@@ -88,7 +88,8 @@ kernel void move(
 	const global int* randIndexLPA, 
 	const int numLPA, 
 	const int dTime,
-	const int pulse // dirty test hack
+	const int pulse, // dirty test hack
+	const global float* pulseData
 	)
 {
 	const uint id = get_global_id(0);
@@ -118,7 +119,10 @@ kernel void move(
 	newPosition = position + newVelocity * speed;
 	
 	// dirty test hack
-	if(newPosition.y > 0.0f) newVelocity += pulse * newPosition.y * newPosition.y * (float3)(10.0f, 0.0f, 0.0f);
+	if(pulse != 0.0f) {
+		float3 pulseVec = pulseData[3] * (float3)(pulseData[0], pulseData[1], pulseData[2]);
+		newVelocity += pulse * (float3)(pulseVec.x, pulseVec.y, pulseVec.z);
+	}
 	
 
 	
