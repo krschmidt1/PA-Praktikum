@@ -248,7 +248,7 @@ public class MainProgram {
     			
     			// RESPAWN
     			int newCalc = defaultSpawn;
-                newCalc = fps>0? (int)(0.9f * ((elements>>1) / (int)fps)) : defaultSpawn;
+                newCalc = (int)fps>0? (int)(0.9f * ((elements>>1) / (int)fps)) : defaultSpawn;
                 newCalc = Math.max(newCalc, defaultSpawn);
              
                 // resize respawn buffer if needed
