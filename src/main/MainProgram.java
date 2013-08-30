@@ -44,11 +44,12 @@ public class MainProgram {
     private boolean running = true;
 
 	////// PARAMETERS
-	private int  elements          = 1<<16; // we want 1<<17
-	private int  defaultSpawn      = 1<<5;  // we want 1<<7   
-	private long changeLPAInterval = 1<<7;  // we want 1<<7
-	private int  numberLPA         = 1<<6;  // we want 1<<6
-	private long mouseThreshold    = 200;
+	private int   elements          = 1<<16;
+	private int   defaultSpawn      = 1<<5;
+	private float respawnFactor     = 0.7f;
+	private long  changeLPAInterval = 1<<7;
+	private int   numberLPA         = 1<<6;
+	private long  mouseThreshold    = 200;
 	
 	////// SHARED BLOCK
 	private int bufferObjectPositions  = -1;
@@ -229,7 +230,7 @@ public class MainProgram {
        
         // print some information
         System.out.println("Running with " + elements + " Particles.");
-        System.out.println("Respawning  ~" + (int)(0.7f*(elements>>1)) + " particles per second (Minimum " + defaultSpawn + " per frame).");
+        System.out.println("Respawning  ~" + (int)(respawnFactor * (elements>>1)) + " particles per second (Minimum " + defaultSpawn + " per frame).");
         System.out.println("Using " + numberLPA + " low pressure areas, changing position every ~" + changeLPAInterval + " ms.");
 
         // spawn first LPAs
@@ -310,7 +311,7 @@ public class MainProgram {
     			
     			// RESPAWN
     			int newCalc = defaultSpawn;
-                newCalc = (int)fps>0? (int)(0.7f * ((elements>>1) / (int)fps)) : defaultSpawn;
+                newCalc = (int)fps>0? (int)(respawnFactor * ((elements>>1) / (int)fps)) : defaultSpawn;
                 newCalc = Math.max(newCalc, defaultSpawn);
              
                 // resize respawn buffer if needed
