@@ -134,12 +134,12 @@ public class ShaderProgram {
     public static final int ATTR_COLOR2 = 3;
     
     /**
-     * Attribut Index von tex
+     * Attribut Index von vertexTexCoords
      */
     public static final int ATTR_TEX = 4;
     
     /**
-     * Attribut Index von instance
+     * Attribut Index von instancedData
      */
     public static final int ATTR_INSTANCE = 5;
     
