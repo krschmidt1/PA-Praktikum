@@ -29,7 +29,6 @@ import opengl.util.ShaderProgram;
 
 import org.lwjgl.LWJGLException;
 import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.GL11;
 import org.lwjgl.util.vector.Matrix4f;
 import org.lwjgl.util.vector.Vector2f;
 import org.lwjgl.util.vector.Vector3f;
@@ -42,11 +41,11 @@ import opengl.util.Geometry;
 import opengl.util.GeometryFactory;
 
 public class MainProgram {
-	private boolean running = true;
+    private boolean running = true;
 
 	////// PARAMETERS
-	private int  elements          = 1<<17; // we want 1<<17
-	private int  defaultSpawn      = 1<<7;  // we want 1<<7   
+	private int  elements          = 1<<16; // we want 1<<17
+	private int  defaultSpawn      = 1<<5;  // we want 1<<7   
 	private long changeLPAInterval = 1<<7;  // we want 1<<7
 	private int  numberLPA         = 1<<6;  // we want 1<<6
 	private long mouseThreshold    = 200;
@@ -57,34 +56,46 @@ public class MainProgram {
 	private int bufferObjectVelocities = -1;
 	private int bufferObjectLPA        = -1;
 
-	////// OPENCL BLOCK
-	private CLContext context     = null;
-	private CLCommandQueue queue  = null;
-	private CLProgram program     = null;
-	private CLKernel kernelMove   = null;
-	private CLKernel kernelSpawn  = null;
-	private CLMem memPositions    = null;
-	private CLMem memVelocities   = null;
-	private CLMem memLifetimes    = null;
-	private CLMem memNewParticles = null;
-	private CLMem memLPAs         = null;
-	private CLMem memLPARandoms   = null;
+    ////// OPENCL BLOCK
+    private CLContext context     = null;
+    private CLCommandQueue queue  = null;
+    private CLProgram program     = null;
+    private CLKernel kernelMove   = null;
+    private CLKernel kernelSpawn  = null;
+    private CLMem memPositions    = null;
+    private CLMem memVelocities   = null;
+    private CLMem memLifetimes    = null;
+    private CLMem memNewParticles = null;
+    private CLMem memLPAs         = null;
+    private CLMem memLPARandoms   = null;
 
-	////// OPENGL BLOCK + DEFERRED SHADING
-	private Matrix4f modelMat  = new Matrix4f();
-	private Camera   cam       = new Camera();
-	private int vertexArrayID  = -1;
+    ////// OPENGL BLOCK + DEFERRED SHADING
+    private Matrix4f modelMat  = new Matrix4f();
+    private Camera   cam       = new Camera();
+    private int vertexArrayID  = -1;
 
-	private int lpaVAID         = -1;
-	private ShaderProgram lpaSP = null;
-	
-	private Geometry screenQuad        = null;
-	private ShaderProgram screenQuadSP = null;
+    private int lpaVAID         = -1;
+    private ShaderProgram lpaSP = null;
+    
+    private Geometry screenQuad        = null;
+    private ShaderProgram screenQuadSP = null;
 
-	private int textureUnit       = 0;
-	private ShaderProgram depthSP = null;
-	private FrameBuffer depthFB   = null;
-	private Texture depthTex      = null;
+    private int textureUnit       = 0;
+    private ShaderProgram depthSP = null;
+    private ShaderProgram glowSP  = null;
+    private ShaderProgram blurSP  = null;
+    private ShaderProgram finalSP  = null;
+    private FrameBuffer depthFB = null;
+    private FrameBuffer glowFB  = null;
+    private FrameBuffer hBlurFB = null;
+    private FrameBuffer vBlurFB = null;
+    private FrameBuffer finalFB = null;
+    private Texture depthTex = null;
+    private Texture glowTex  = null;
+    private Texture noiseTex = null;
+    private Texture hBlurTex = null;
+    private Texture vBlurTex = null;
+    private Texture finalTex = null;
 
 	////// other
 	private long lastTimestamp   = System.currentTimeMillis();
@@ -145,12 +156,12 @@ public class MainProgram {
 	    vertexArrayID = glGenVertexArrays();
         glBindVertexArray(vertexArrayID);
 
-		// positions
-		FloatBuffer particlePositions = ParticleFactory.createZeroFloatBuffer(elements * 3);
-		bufferObjectPositions = glGenBuffers();
-		glBindBuffer(GL_ARRAY_BUFFER, bufferObjectPositions);
-		glBufferData(GL_ARRAY_BUFFER, particlePositions, GL_STATIC_DRAW);
-		
+        // positions
+        FloatBuffer particlePositions = ParticleFactory.createZeroFloatBuffer(elements * 3);
+        bufferObjectPositions = glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, bufferObjectPositions);
+        glBufferData(GL_ARRAY_BUFFER, particlePositions, GL_STATIC_DRAW);
+        
         glEnableVertexAttribArray(ShaderProgram.ATTR_POS);
         glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3 * SizeOf.FLOAT, 0);
         
@@ -193,6 +204,7 @@ public class MainProgram {
 		memLifetimes  = OpenCL.clCreateFromGLBuffer(context, OpenCL.CL_MEM_READ_WRITE, bufferObjectLifetimes);
 		
 		// static kernel arguments
+    
         OpenCL.clSetKernelArg(kernelMove, 0, memPositions);
         OpenCL.clSetKernelArg(kernelMove, 1, memVelocities);
         OpenCL.clSetKernelArg(kernelMove, 2, memLifetimes);
@@ -203,7 +215,7 @@ public class MainProgram {
         OpenCL.clSetKernelArg(kernelSpawn, 2, memLifetimes);
         
         // calculate global work size
-		PointerBuffer gws = new PointerBuffer(elements);
+        PointerBuffer gws = new PointerBuffer(elements);
         gws.put(0, elements);
 
         // limit respawn elements to elements, create the buffer
@@ -217,7 +229,7 @@ public class MainProgram {
        
         // print some information
         System.out.println("Running with " + elements + " Particles.");
-        System.out.println("Respawning  ~" + (elements>>1) + " particles per second (Minimum " + defaultSpawn + " per frame).");
+        System.out.println("Respawning  ~" + (int)(0.7f*(elements>>1)) + " particles per second (Minimum " + defaultSpawn + " per frame).");
         System.out.println("Using " + numberLPA + " low pressure areas, changing position every ~" + changeLPAInterval + " ms.");
 
         // spawn first LPAs
@@ -230,7 +242,6 @@ public class MainProgram {
         FloatBuffer pulseBuffer = ParticleFactory.createZeroFloatBuffer(5);
         CLMem memPulse = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_USE_HOST_PTR | OpenCL.CL_MEM_READ_ONLY, pulseBuffer);
         
-        long debugTimer = 0;
         while(running) {
 			long deltaTime = System.currentTimeMillis() - lastTimestamp;
 			lastTimestamp  += deltaTime;
@@ -254,11 +265,13 @@ public class MainProgram {
                     }
                     
                     if(memLPARandoms != null) {
-                    	OpenCL.clReleaseMemObject(memLPARandoms);
-                    	memLPARandoms = null;
+                        OpenCL.clReleaseMemObject(memLPARandoms);
+                        memLPARandoms = null;
                     }
                     memLPARandoms = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_COPY_HOST_PTR | OpenCL.CL_MEM_READ_ONLY, bufferRandIndices);
                 }
+                
+                
                 
 				// ACQUIRE OPENGL BUFFERS
     			OpenCL.clEnqueueAcquireGLObjects(queue, memPositions,  null, null);
@@ -294,9 +307,10 @@ public class MainProgram {
     			OpenCL.clEnqueueNDRangeKernel(queue, kernelMove, 1, null, gws, null, null, null);
     			
     			
+    			
     			// RESPAWN
     			int newCalc = defaultSpawn;
-                newCalc = (int)fps>0? (int)(0.9f * ((elements>>1) / (int)fps)) : defaultSpawn;
+                newCalc = (int)fps>0? (int)(0.7f * ((elements>>1) / (int)fps)) : defaultSpawn;
                 newCalc = Math.max(newCalc, defaultSpawn);
              
                 // resize respawn buffer if needed
@@ -310,7 +324,7 @@ public class MainProgram {
                     }
                 }
                 
-    	        ParticleFactory.createNewParticles(bufferNewParticleData);
+                ParticleFactory.createNewParticles(bufferNewParticleData);
                 if(memNewParticles != null) {
                     OpenCL.clReleaseMemObject(memNewParticles);
                     memNewParticles = null;
@@ -332,10 +346,9 @@ public class MainProgram {
     	        OpenCL.clEnqueueReleaseGLObjects(queue, memVelocities, null, null);
     	        OpenCL.clEnqueueReleaseGLObjects(queue, memLPAs,       null, null);
                 OpenCL.clEnqueueReleaseGLObjects(queue, memPositions,  null, null);
-                
-			}  // if animating
-		
-			drawScene();
+            }  // if animating
+        
+            drawScene();
 
             // if close is requested: close
 			if(Display.isCloseRequested() || Keyboard.isKeyDown(Keyboard.KEY_ESCAPE)) {
@@ -350,13 +363,14 @@ public class MainProgram {
 	 */
     public void drawScene() {
         Matrix4f viewProj = opengl.util.Util.mul(null, cam.getProjection(), cam.getView());
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		
-		// post effects etc
-		depthSP.use();
-		depthSP.setUniform("model", modelMat);
-		depthSP.setUniform("viewProj", viewProj);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        // post effects etc
+        depthSP.use();
+        depthSP.setUniform("model", modelMat);
+        depthSP.setUniform("viewProj", viewProj);
         depthSP.setUniform("camPos", cam.getCamPos());
+        depthSP.setUniform("noiseTex", noiseTex);
 
         depthFB.bind();
         depthFB.clearColor();
@@ -366,17 +380,71 @@ public class MainProgram {
         
         glBindVertexArray(vertexArrayID);
         opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, elements);
+//      glowSP.use();
+//      glowSP.setUniform("model", modelMat);
+//      glowSP.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
+//      glowSP.setUniform("camPos", cam.getCamPos());
+//      glowSP.setUniform("depthTex", depthTex);
+//      glowSP.setUniform("TexelSize", new Vector3f(1.0f/WIDTH, 1.0f/HEIGHT, 0.0f));
+//      glowSP.setUniform("Sample0", depthTex);
+//      glowSP.setUniform("Orientation", 0);
+//      glowSP.setUniform("BlurAmount", 10);
+//      glowSP.setUniform("BlurScale", 2.0f);
+//      glowSP.setUniform("BlurStrength", 0.4f);
+//
+//      glowFB.bind();
+//      glowFB.clearColor();
+        
+        
+        blurSP.use();
+        blurSP.setUniform("tex", depthTex);
+        blurSP.setUniform("dir", 1);
+        hBlurFB.bind();
+        hBlurFB.clearColor();
+        
+//      glEnable(GL_BLEND);
+//      glDisable(GL_DEPTH_TEST);
+//      
+//      glBindVertexArray(vertexArrayID);
+//      opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, elements);
+        
+        screenQuad.draw();
+
+//        glowSP.setUniform("Sample0", glowTex);
+//        glowSP.setUniform("Orientation", 1);
+        blurSP.setUniform("tex", hBlurTex);
+        blurSP.setUniform("dir", 0);
+        vBlurFB.bind();
+        vBlurFB.clearColor();
+        
+        screenQuad.draw();
         
         glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);
         
-		// draw texture on screenquad
+        finalSP.use();
+        finalSP.setUniform("depthTex", depthTex);
+        finalSP.setUniform("blurTex", vBlurTex);
+//      finalSP.setUniform("tex", hBlurTex);
+//      finalSP.setUniform("dir", 0);
+//      finalFB.bind();
+//      finalFB.clearColor();
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		screenQuadSP.use();        
-		screenQuadSP.setUniform("image", depthTex);
-		screenQuad.draw();
-		
-		// show low pressure areas with a blue tone
+        screenQuad.draw();
+        
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+        
+        
+//      // draw texture on screenquad
+//        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+//      screenQuadSP.use();        
+//      screenQuadSP.setUniform("image", finalTex);
+////        screenQuadSP.setUniform("image2", glowTex);
+//      screenQuad.draw();
+        
+        // show low pressure areas with a blue tone
+
         if(showLPA) {
             lpaSP.use();
             lpaSP.setUniform("model", modelMat);
@@ -389,12 +457,12 @@ public class MainProgram {
             glBindVertexArray(lpaVAID);
             opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, numberLPA);
         }
-		
+
         // present screen
         Display.update();
         if(fpsControl)
             Display.sync(60);
-	}
+    }
     
     /**
      * Handle keyboard and mouse inputs
@@ -510,7 +578,60 @@ public class MainProgram {
         depthFB.addTexture(depthTex, GL_RGBA16F, GL_RGBA);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glBindFragDataLocation(depthSP.getId(), 0, "depth");
+        glBindFragDataLocation(depthSP.getId(), 0, "PixelColor");
+        
+        // second renderpath: "glow"
+        glowSP = new ShaderProgram("./shader/GlowVS.glsl", "./shader/GlowFS.glsl");
+        glowSP.use();
+        
+        glowFB = new FrameBuffer();
+        glowFB.init(true, WIDTH, HEIGHT);
+
+        glowTex = new Texture(GL_TEXTURE_2D, textureUnit++);
+        glowFB.addTexture(glowTex, GL_RGBA16F, GL_RGBA);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFragDataLocation(glowSP.getId(), 0, "PixelColor");
+        
+        // renderpath: "blur"
+        blurSP = new ShaderProgram("./shader/ScreenQuad_VS.glsl", "./shader/Blur_FS.glsl");
+        blurSP.use();
+        
+        hBlurFB = new FrameBuffer();
+        hBlurFB.init(true, WIDTH, HEIGHT);
+        
+        hBlurTex = new Texture(GL_TEXTURE_2D, textureUnit++);
+        hBlurFB.addTexture(hBlurTex, GL_RGBA16F, GL_RGBA);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFragDataLocation(blurSP.getId(), 0, "PixelColor");
+        
+        vBlurFB = new FrameBuffer();
+        vBlurFB.init(true, WIDTH, HEIGHT);
+        
+        vBlurTex = new Texture(GL_TEXTURE_2D, textureUnit++);
+        vBlurFB.addTexture(vBlurTex, GL_RGBA16F, GL_RGBA);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFragDataLocation(blurSP.getId(), 0, "PixelColor");
+
+        // renderPath: "blur"
+        finalSP = new ShaderProgram("./shader/ScreenQuad_VS.glsl", "./shader/FinalFS.glsl");
+        finalSP.use();
+        
+        finalFB = new FrameBuffer();
+        finalFB.init(true, WIDTH, HEIGHT);
+        
+        finalTex = new Texture(GL_TEXTURE_2D, textureUnit++);
+        finalFB.addTexture(finalTex, GL_RGBA16F, GL_RGBA);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFragDataLocation(finalSP.getId(), 0, "PixelColor");
+        
+        // noise texture
+        noiseTex = Texture.generateTexture("./res/perlin.png", textureUnit++);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glBlendFunc(GL_ONE, GL_ONE);
@@ -560,11 +681,13 @@ public class MainProgram {
         
         // Shaderprograms
         if(screenQuadSP != null)
-        	screenQuadSP.delete();
+            screenQuadSP.delete();
         if(lpaSP != null)
             lpaSP.delete();
         if(depthSP != null)
-        	depthSP.delete();
+            depthSP.delete();
+        if(glowSP != null)
+            glowSP.delete();
         
         // Display
         if(!Display.isCloseRequested())  {
@@ -573,31 +696,31 @@ public class MainProgram {
         
         // MemObjects
         if(memLPARandoms != null)
-        	OpenCL.clReleaseMemObject(memLPARandoms);
+            OpenCL.clReleaseMemObject(memLPARandoms);
         if(memLifetimes != null)
-        	OpenCL.clReleaseMemObject(memLifetimes);
+            OpenCL.clReleaseMemObject(memLifetimes);
         if(memVelocities != null)
-        	OpenCL.clReleaseMemObject(memVelocities);
+            OpenCL.clReleaseMemObject(memVelocities);
         if(memPositions != null)
-        	OpenCL.clReleaseMemObject(memPositions);
+            OpenCL.clReleaseMemObject(memPositions);
         if(memLPAs != null)
-        	OpenCL.clReleaseMemObject(memLPAs);
+            OpenCL.clReleaseMemObject(memLPAs);
         if(memNewParticles != null)
             OpenCL.clReleaseMemObject(memNewParticles);
 
         // Kernels
         if(kernelSpawn != null)
-        	OpenCL.clReleaseKernel(kernelSpawn);
+            OpenCL.clReleaseKernel(kernelSpawn);
         if(kernelMove != null)
-        	OpenCL.clReleaseKernel(kernelMove);
+            OpenCL.clReleaseKernel(kernelMove);
         
         // OpenCL Context
         if(program != null)
-        	OpenCL.clReleaseProgram(program);
+            OpenCL.clReleaseProgram(program);
         if(queue != null)
-        	OpenCL.clReleaseCommandQueue(queue);
+            OpenCL.clReleaseCommandQueue(queue);
         if(context != null)
-        	OpenCL.clReleaseContext(context);
+            OpenCL.clReleaseContext(context);
         
         // OpenCL and OpenGL
         CLUtil.destroyCL();
@@ -612,10 +735,10 @@ public class MainProgram {
 		numberOfFrames++;
 		sumDeltaTime += deltaTime;
         if(sumDeltaTime > 1000) {
-        	fps = numberOfFrames / (float)(sumDeltaTime / 1000);
-        	numberOfFrames = 0;
-        	sumDeltaTime   = 0;
-        	Display.setTitle("FPS: " + fps);
+            fps = numberOfFrames / (float)(sumDeltaTime / 1000);
+            numberOfFrames = 0;
+            sumDeltaTime   = 0;
+            Display.setTitle("FPS: " + fps);
         }
 	}
 	

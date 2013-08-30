@@ -112,9 +112,6 @@ kernel void move(
 	float3 newPosition = (float3)0.0f;
 	float3 newVelocity = (float3)0.0f;
 	
-																							// TODO: adjust the 2.5f to match
-																							// other particle amounts - this is
-																							// tested for 131 072 particles.
 	newVelocity = mix(normalize(velocity), closestLPAdirection(lowPressureAreas, numLPA, position, randIndexLPA[id]), 2.5f * speed);
 	newPosition = position + newVelocity * speed;
 	
