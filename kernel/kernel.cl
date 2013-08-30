@@ -116,9 +116,16 @@ kernel void move(
 	newPosition = position + newVelocity * speed;
 	
 	// dirty test hack
-	if(pulse != 0.0f) {
-		float3 pulseVec = pulseData[3] * (float3)(pulseData[0], pulseData[1], pulseData[2]);
-		newVelocity += pulse * (float3)(pulseVec.x, pulseVec.y, pulseVec.z);
+	if(pulse) {
+		const float3 pulsePosition  = (float3)(pulseData[0], pulseData[1], pulseData[2]);
+		const float3 pulseDirection = (float3)(pulseData[3], pulseData[4], pulseData[5]);
+		const float  pulseStrength  = pulseData[6];
+		
+		const float3 diffVector     = position - pulsePosition;
+		const float dotProduct = dot(normalize(diffVector), pulseDirection);
+		if(dotProduct >= 0.8f) {
+			newVelocity += pulseDirection * pulseStrength / dotProduct / dot(diffVector, diffVector);
+		}
 	}
 	
 

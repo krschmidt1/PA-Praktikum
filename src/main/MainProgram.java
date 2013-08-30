@@ -45,17 +45,19 @@ public class MainProgram {
     private boolean running = true;
 
 	////// PARAMETERS
-	private int  elements          = 1<<16; // we want 1<<17
-	private int  defaultSpawn      = 1<<5;  // we want 1<<7   
-	private long changeLPAInterval = 1<<7;  // we want 1<<7
-	private int  numberLPA         = 1<<6;  // we want 1<<6
-	private long mouseThreshold    = 200;
+	private int   elements          = 1<<16;
+	private int   defaultSpawn      = 1<<5;
+	private float respawnFactor     = 0.7f;
+	private long  changeLPAInterval = 1<<7;
+	private int   numberLPA         = 1<<6;
+	private long  mouseThreshold    = 200;
 	
 	////// SHARED BLOCK
 	private int bufferObjectPositions  = -1;
 	private int bufferObjectLifetimes  = -1;
 	private int bufferObjectVelocities = -1;
 	private int bufferObjectLPA        = -1;
+	private int bufferObjectPulse      = -1;
 
     ////// OPENCL BLOCK
     private CLContext context     = null;
@@ -75,8 +77,9 @@ public class MainProgram {
     private Camera   cam       = new Camera();
     private int vertexArrayID  = -1;
 
-    private int lpaVAID         = -1;
-    private ShaderProgram lpaSP = null;
+    private int lpaVAID   = -1;
+    private int pulseVAID = -1;
+    private ShaderProgram lpaPulseSP = null;
     
     private Geometry screenQuad        = null;
     private ShaderProgram screenQuadSP = null;
@@ -121,11 +124,11 @@ public class MainProgram {
 	private boolean fpsControl   = false;
 	private boolean mousePressed = false;
 	
-	// TODO dirty hack
-	private boolean pulse = false;
-	private Vector4f pulseDir = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
-	private Vector2f mouseMovement = new Vector2f(0.0f, 0.0f);
-
+	private boolean  pulse     = false;
+	private boolean  showPulse = false;
+	private Vector4f pulseDir  = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
+	private Vector4f pulsePos  = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f); 
+	
 	/**
 	 * Ctor.
 	 */
@@ -200,6 +203,18 @@ public class MainProgram {
         glEnableVertexAttribArray(ShaderProgram.ATTR_POS);
         glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3 * SizeOf.FLOAT, 0);
         
+        // additional vertex array to be visualize the pulse
+        pulseVAID = glGenVertexArrays();
+        glBindVertexArray(pulseVAID);
+        
+        bufferObjectPulse = glGenBuffers();
+        FloatBuffer bufferPulse = ParticleFactory.createZeroFloatBuffer(6);
+        glBindBuffer(GL_ARRAY_BUFFER, bufferObjectPulse);
+        glBufferData(GL_ARRAY_BUFFER, bufferPulse, GL_STATIC_DRAW);
+        
+        glEnableVertexAttribArray(ShaderProgram.ATTR_POS);
+        glVertexAttribPointer(ShaderProgram.ATTR_POS, 3, GL_FLOAT, false, 3 * SizeOf.FLOAT, 0);
+        
         return true;
 	}
 	
@@ -237,7 +252,7 @@ public class MainProgram {
        
         // print some information
         System.out.println("Running with " + elements + " Particles.");
-        System.out.println("Respawning  ~" + (int)(0.7f*(elements>>1)) + " particles per second (Minimum " + defaultSpawn + " per frame).");
+        System.out.println("Respawning  ~" + (int)(respawnFactor * (elements>>1)) + " particles per second (Minimum " + defaultSpawn + " per frame).");
         System.out.println("Using " + numberLPA + " low pressure areas, changing position every ~" + changeLPAInterval + " ms.");
 
         // spawn first LPAs
@@ -247,7 +262,7 @@ public class MainProgram {
         memLPAs = CL10GL.clCreateFromGLBuffer(context, 0, bufferObjectLPA, null);
         
         // init pulse Dir buffer
-        FloatBuffer pulseBuffer = ParticleFactory.createZeroFloatBuffer(5);
+        FloatBuffer pulseBuffer = ParticleFactory.createZeroFloatBuffer(7);
         CLMem memPulse = OpenCL.clCreateBuffer(context, OpenCL.CL_MEM_USE_HOST_PTR | OpenCL.CL_MEM_READ_ONLY, pulseBuffer);
         
         while(running) {
@@ -294,16 +309,13 @@ public class MainProgram {
     	        OpenCL.clSetKernelArg(kernelMove, 3, memLPAs);
     			OpenCL.clSetKernelArg(kernelMove, 4, memLPARandoms);
     			OpenCL.clSetKernelArg(kernelMove, 6, (int)deltaTime);
-    			
-    			// TODO dirty hack to test
     			OpenCL.clSetKernelArg(kernelMove, 7, pulse?1:0);
     			if(pulse) {
     				pulse = false;
-    				pulseBuffer.put(0, pulseDir.x);
-    				pulseBuffer.put(1, pulseDir.y);
-    				pulseBuffer.put(2, pulseDir.z);
-    				pulseBuffer.put(3, pulseDir.w);
-    				
+    				pulseBuffer.put(new float[]{
+    						pulsePos.x, pulsePos.y, pulsePos.z, pulseDir.x, pulseDir.y, pulseDir.z, pulseDir.w
+    				});
+    				pulseBuffer.rewind();
     				if(memPulse != null) {
     					OpenCL.clReleaseMemObject(memPulse);
     					memPulse = null;
@@ -318,7 +330,7 @@ public class MainProgram {
     			
     			// RESPAWN
     			int newCalc = defaultSpawn;
-                newCalc = (int)fps>0? (int)(0.7f * ((elements>>1) / (int)fps)) : defaultSpawn;
+                newCalc = (int)fps>0? (int)(respawnFactor * ((elements>>1) / (int)fps)) : defaultSpawn;
                 newCalc = Math.max(newCalc, defaultSpawn);
              
                 // resize respawn buffer if needed
@@ -472,16 +484,29 @@ public class MainProgram {
         // show low pressure areas with a blue tone
 
         if(showLPA) {
-            lpaSP.use();
-            lpaSP.setUniform("model", modelMat);
-            lpaSP.setUniform("viewProj", viewProj);
-            lpaSP.setUniform("camPos", cam.getCamPos());
+        	lpaPulseSP.use();
+        	lpaPulseSP.setUniform("viewProj", viewProj);
+        	lpaPulseSP.setUniform("camPos", cam.getCamPos());
+        	lpaPulseSP.setUniform("color", new Vector3f(0,1,1));
             
             glDisable(GL_BLEND);
             glDisable(GL_DEPTH_TEST);
             
             glBindVertexArray(lpaVAID);
             opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, numberLPA);
+        }
+        if(showPulse) {
+        	lpaPulseSP.use();
+        	lpaPulseSP.setUniform("viewProj", viewProj);
+        	lpaPulseSP.setUniform("camPos", cam.getCamPos());
+        	lpaPulseSP.setUniform("color", new Vector3f(0.2f,1,0.4f));
+        	
+        	glDisable(GL_BLEND);
+            glDisable(GL_DEPTH_TEST);
+            
+            glLineWidth(10.0f);
+            glBindVertexArray(pulseVAID);
+            opengl.GL.glDrawArrays(GL11.GL_LINES, 0, 2);
         }
 
         // present screen
@@ -527,7 +552,9 @@ public class MainProgram {
                                          if(debug) System.out.println("FPS " + (!fpsControl?"un":"") + "limited");
                                              break;
                                              
-                    case Keyboard.KEY_R: ; break;
+                    case Keyboard.KEY_B: showPulse = !showPulse;
+                    					 if(debug) System.out.println((showPulse?"V":"Not v") + "iewing pulse!");
+                    					 	break;
                 }
             }
         }
@@ -540,18 +567,34 @@ public class MainProgram {
         	if(mouseDelay >= mouseThreshold) {
         		if(debug) 
         			System.out.println("LMB released");
+        		
         		mouseDelay   = 0;
         		mousePressed = false;
-        		mouseMovement.x -= Mouse.getX();
-        		mouseMovement.y -= Mouse.getY();
+        		float dX = pulsePos.x - Mouse.getX();
+        		float dY = pulsePos.y - Mouse.getY();
+        		
         		if(debug)
-        			System.out.println("Mouse difference: " + mouseMovement);
-        		if(mouseMovement.length() != 0.0f) {
-	        		pulse = true;
-	        		pulseDir.set(mouseMovement.x, -mouseMovement.y);
-	        		pulseDir.normalise();
-	        		pulseDir.w = 10.0f * mouseMovement.lengthSquared()/(WIDTH*WIDTH + HEIGHT*HEIGHT);
-	        		System.out.println(pulseDir);
+        			System.out.println("Mouse difference: (" + dX + ", " + dY + ")");
+        		
+        		if(dX * dX + dY * dY != 0.0f) {
+        			Matrix4f invViewProj = (Matrix4f)opengl.util.Util.mul(null, cam.getProjection(), cam.getView()).invert();
+        			pulse = true;
+        		
+        			// set direction in 2D
+        			pulseDir.set(-dX, -dY);
+        			// retransform to 3D
+        			Matrix4f.transform(invViewProj, pulseDir, pulseDir);
+        			// normalise to only get direction
+        			pulseDir.normalise();
+        			
+        			// set pulse strength
+        			pulseDir.w = 20.0f * (dX * dX + dY * dY) / (WIDTH * WIDTH + HEIGHT * HEIGHT);
+        			
+        			// map pulsePos to other coordinates
+        			pulsePos.x = pulsePos.x * 2.0f / WIDTH  - 1.0f;
+        			pulsePos.y = pulsePos.y * 2.0f / HEIGHT - 1.0f;
+        			// retransform pulsePos to 3D
+        			Matrix4f.transform(invViewProj, pulsePos, pulsePos);
         		}
         	}
         }
@@ -566,7 +609,7 @@ public class MainProgram {
             		if(debug) 
             			System.out.println("LMB press!");
             		mousePressed = true;
-            		mouseMovement.set(Mouse.getX(), Mouse.getY());
+            		pulsePos.set(Mouse.getX(), Mouse.getY());
             	}
             	mouseDelay = 0;
             }
@@ -590,8 +633,8 @@ public class MainProgram {
         screenQuad   = GeometryFactory.createScreenQuad();
         screenQuadSP = new ShaderProgram("shader/ScreenQuad_VS.glsl", "shader/CopyTexture_FS.glsl");
         
-        // lpa debug visualization
-        lpaSP = new ShaderProgram("shader/LPA_VS.glsl", "shader/LPA_FS.glsl");
+        // lpa + pulse visualization
+        lpaPulseSP = new ShaderProgram("shader/LPAPulse_VS.glsl", "shader/LPAPulse_FS.glsl");
         
         // first renderpath: "depth"
         depthSP = new ShaderProgram("./shader/DefaultVS.glsl", "./shader/Default1FS.glsl");
@@ -738,8 +781,8 @@ public class MainProgram {
         // Shaderprograms
         if(screenQuadSP != null)
             screenQuadSP.delete();
-        if(lpaSP != null)
-            lpaSP.delete();
+        if(lpaPulseSP != null)
+            lpaPulseSP.delete();
         if(depthSP != null)
             depthSP.delete();
         if(glowSP != null)
@@ -814,6 +857,7 @@ public class MainProgram {
 	        "L", "Show Low Pressure Areas",
 	        "E", "Pause animation",
 	        "H", "debug mode",
+	        "B", "Show pulse (WIP!)",
 	        "", "",
 	        "LMB", "Push flame (press and move to give direction) -WIP!",
 	        "RMB", "Turn the camera",
