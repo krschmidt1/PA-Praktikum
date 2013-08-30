@@ -29,6 +29,7 @@ import opengl.util.ShaderProgram;
 
 import org.lwjgl.LWJGLException;
 import org.lwjgl.opengl.Display;
+import org.lwjgl.opengl.GL11;
 import org.lwjgl.util.vector.Matrix4f;
 import org.lwjgl.util.vector.Vector2f;
 import org.lwjgl.util.vector.Vector3f;
@@ -80,11 +81,17 @@ public class MainProgram {
     private Geometry screenQuad        = null;
     private ShaderProgram screenQuadSP = null;
 
+    private Geometry cube         = null;
+    private ShaderProgram cubeSP  = null;
+    private FrameBuffer cubeFB    = null;
+    private Texture cubeTex       = null;
+    private Texture cubeFinalTex  = null;
+    
     private int textureUnit       = 0;
     private ShaderProgram depthSP = null;
     private ShaderProgram glowSP  = null;
     private ShaderProgram blurSP  = null;
-    private ShaderProgram finalSP  = null;
+    private ShaderProgram finalSP = null;
     private FrameBuffer depthFB = null;
     private FrameBuffer glowFB  = null;
     private FrameBuffer hBlurFB = null;
@@ -92,10 +99,11 @@ public class MainProgram {
     private FrameBuffer finalFB = null;
     private Texture depthTex = null;
     private Texture glowTex  = null;
-    private Texture noiseTex = null;
     private Texture hBlurTex = null;
     private Texture vBlurTex = null;
     private Texture finalTex = null;
+    private Texture noiseTex = null;
+    private Texture chessTex = null;
 
 	////// other
 	private long lastTimestamp   = System.currentTimeMillis();
@@ -421,10 +429,27 @@ public class MainProgram {
         
         glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);
+
+        
+        // draw cube
+        cubeSP.use();
+        cubeSP.setUniform("model", modelMat);
+        cubeSP.setUniform("viewProj", viewProj);
+        cubeSP.setUniform("camPos", cam.getCamPos());
+        cubeSP.setUniform("text", cubeTex);
+        
+        cubeFB.bind();
+        cubeFB.clearColor();
+        
+        glDisable(GL_CULL_FACE);
+        
+        cube.draw();
+        
         
         finalSP.use();
         finalSP.setUniform("depthTex", depthTex);
         finalSP.setUniform("blurTex", vBlurTex);
+        finalSP.setUniform("bgTex", cubeFinalTex);
 //      finalSP.setUniform("tex", hBlurTex);
 //      finalSP.setUniform("dir", 0);
 //      finalFB.bind();
@@ -432,14 +457,15 @@ public class MainProgram {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         screenQuad.draw();
         
-        glDisable(GL_BLEND);
-        glEnable(GL_DEPTH_TEST);
+//        glDisable(GL_BLEND);
+//        glEnable(GL_DEPTH_TEST);
         
         
-//      // draw texture on screenquad
+        
+      // draw texture on screenquad
 //        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 //      screenQuadSP.use();        
-//      screenQuadSP.setUniform("image", finalTex);
+//      screenQuadSP.setUniform("image", cubeFinalTex);
 ////        screenQuadSP.setUniform("image2", glowTex);
 //      screenQuad.draw();
         
@@ -615,7 +641,7 @@ public class MainProgram {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glBindFragDataLocation(blurSP.getId(), 0, "PixelColor");
 
-        // renderPath: "blur"
+        // renderPath: "final"
         finalSP = new ShaderProgram("./shader/ScreenQuad_VS.glsl", "./shader/FinalFS.glsl");
         finalSP.use();
         
@@ -627,11 +653,41 @@ public class MainProgram {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glBindFragDataLocation(finalSP.getId(), 0, "PixelColor");
+
+        // renderPath: "cube"
+		cube = GeometryFactory.createTexturedCube();
+		
+        cubeSP = new ShaderProgram("./shader/CubeVS.glsl", "./shader/CubeFS.glsl");
+        cubeSP.use();
+        
+        cubeFB = new FrameBuffer();
+        cubeFB.init(true, WIDTH, HEIGHT);
+        
+        cubeFinalTex = new Texture(GL_TEXTURE_2D, textureUnit++);
+        cubeFB.addTexture(cubeFinalTex, GL_RGBA16F, GL_RGBA);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFragDataLocation(cubeSP.getId(), 0, "PixelColor");
+        
+        
+        // cube texture
+        cubeTex = Texture.generateTexture("./res/chessboardCube.png", textureUnit++);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
         
         // noise texture
         noiseTex = Texture.generateTexture("./res/perlin.png", textureUnit++);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        
+        // chessboard texture
+        chessTex = Texture.generateTexture("./res/chessboard.png", textureUnit++);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
         
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glBlendFunc(GL_ONE, GL_ONE);
