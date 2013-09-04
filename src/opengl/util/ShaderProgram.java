@@ -2,6 +2,8 @@ package opengl.util;
 
 import static opengl.GL.*;
 
+import java.nio.FloatBuffer;
+
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.util.vector.Matrix4f;
 import org.lwjgl.util.vector.Vector3f;
@@ -26,6 +28,17 @@ public class ShaderProgram {
     
     public int getID(){
     	return this.id;
+    }
+    
+    public void setUniform3fv(String varName, FloatBuffer fb) {
+        int loc = glGetUniformLocation(this.id, varName);
+        if(loc != -1) {
+            GL20.glUniform3(loc, fb);
+        } else {
+        	if(DEBUG)
+        		System.err.println("Uniform3fv: "+ varName +", ShaderProgram: "+this.id+",\n VertexShader: " + vertexShader + ", FragmentShader: " + fragmentShader);
+        }
+        
     }
     
     /**

@@ -5,6 +5,7 @@ uniform sampler2D text;
 in vec4 FragmentPos;
 in vec4 normalWC;
 in vec2 uv;
+in vec3[64] lights;
 
 out vec4 PixelColor;
 

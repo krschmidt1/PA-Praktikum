@@ -89,6 +89,7 @@ public class MainProgram {
     private FrameBuffer cubeFB    = null;
     private Texture cubeTex       = null;
     private Texture cubeFinalTex  = null;
+    private FloatBuffer bufferLPA = null;
     
     private int textureUnit       = 0;
     private ShaderProgram depthSP = null;
@@ -257,7 +258,7 @@ public class MainProgram {
         System.out.println("Using " + numberLPA + " low pressure areas, changing position every ~" + changeLPAInterval + " ms.");
 
         // spawn first LPAs
-        FloatBuffer bufferLPA = ParticleFactory.createLPA(numberLPA);
+        bufferLPA = ParticleFactory.createLPA(numberLPA);
         glBindBuffer(GL_ARRAY_BUFFER, bufferObjectLPA);
         glBufferData(GL_ARRAY_BUFFER, bufferLPA, GL_STATIC_DRAW);
         memLPAs = CL10GL.clCreateFromGLBuffer(context, 0, bufferObjectLPA, null);
@@ -451,6 +452,7 @@ public class MainProgram {
         cubeSP.setUniform("viewProj", viewProj);
         cubeSP.setUniform("camPos", cam.getCamPos());
         cubeSP.setUniform("text", cubeTex);
+        cubeSP.setUniform3fv("lightPos", bufferLPA);
         
         cubeFB.bind();
         cubeFB.clearColor();
