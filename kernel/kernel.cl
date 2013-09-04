@@ -112,7 +112,7 @@ kernel void move(
 	float3 newPosition = (float3)0.0f;
 	float3 newVelocity = (float3)0.0f;
 	
-	newVelocity = mix(normalize(velocity), closestLPAdirection(lowPressureAreas, numLPA, position, randIndexLPA[id]), 2.5f * speed);
+	newVelocity = mix(normalize(velocity), closestLPAdirection(lowPressureAreas, numLPA, position, randIndexLPA[id]), 2.0f * speed);
 	newPosition = position + newVelocity * speed;
 	
 	// dirty test hack

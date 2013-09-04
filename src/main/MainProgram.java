@@ -480,7 +480,7 @@ public class MainProgram {
       // draw texture on screenquad
 //        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 //      screenQuadSP.use();        
-//      screenQuadSP.setUniform("image", cubeFinalTex);
+//      screenQuadSP.setUniform("image", vBlurTex);
 ////        screenQuadSP.setUniform("image2", glowTex);
 //      screenQuad.draw();
         
@@ -718,8 +718,8 @@ public class MainProgram {
         
         // cube texture
 //        cubeTex = Texture.generateTexture("./res/skybox.jpg", textureUnit++);
-//        cubeTex = Texture.generateTexture("./res/cube1.png", textureUnit++);
-        cubeTex = Texture.generateTexture("./res/chessboardCube.png", textureUnit++);
+        cubeTex = Texture.generateTexture("./res/cube2.png", textureUnit++);
+//        cubeTex = Texture.generateTexture("./res/chessboardCube.png", textureUnit++);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);

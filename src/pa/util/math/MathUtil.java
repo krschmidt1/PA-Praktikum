@@ -100,7 +100,7 @@ public class MathUtil
 		return 1/sqrt(2*PI*sigma*sigma)*pow(2.71828182846f,-((x-mu)*(x-mu)/2*sigma*sigma));
 	}
 
-	private static float pow(float a, float b) {
+	public static float pow(float a, float b) {
 		return (float)Math.pow(a, b);
 	}
 }

@@ -27,6 +27,6 @@ void main(void) {
 	color.x = color.x*1.2;
 	color.y = color.y*1.2;
 	color.x = clamp(color.x, 0.0f, 0.2f);
-	color.y = clamp(color.y, 0.0f, 0.2f);
+	color.y = clamp(color.y, 0.0f, 0.1f);
 	//color.z = clamp(color.z, 0.0f, 0.2f);
 }

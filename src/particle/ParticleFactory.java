@@ -15,7 +15,7 @@ public class ParticleFactory {
 
     private static Random rng = new Random();
     
-    private static float spawnRadius   = 0.1f;
+    private static float spawnRadius   = 0.3f;
     private static float averageSpawnY = -0.5f;
     private static float spawnHeightY  = 0.1f;
     
@@ -32,7 +32,7 @@ public class ParticleFactory {
      * @return x, y, z coordinates 
      */
 	public static float[] generateCoordinates() {
-        float radius = rng.nextFloat() * spawnRadius - spawnRadius / 2.0f;
+        float radius = MathUtil.pow(rng.nextFloat(), 1.0f / 3.0f) * spawnRadius - spawnRadius / 2.0f;
         float phi    = rng.nextFloat() * Util.PI_MUL2;
         float theta  = rng.nextFloat() * Util.PI_DIV2;
         
