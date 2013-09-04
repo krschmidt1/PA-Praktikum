@@ -1,3 +1,4 @@
 http://devmaster.net/posts/3100/shader-effects-glow-bloom
 http://nullprogram.com/img/noise/perlin.png
 http://http.developer.nvidia.com/GPUGems/gpugems_ch06.html
+http://seamless-pixels.blogspot.de/2012/09/leaf-textures.html?view=sidebar

@@ -21,8 +21,8 @@ public class ParticleFactory {
     
     private static float defaultFlameRadius = 0.1f;
     
-    private static long minLifetime = 2100;  // in ms
-    private static long maxLifetime = 2400;  // in ms
+    private static long minLifetime = 1500;//2100;  // in ms
+    private static long maxLifetime = 1700;//2400;  // in ms
     
     private static float minSpeed = 0.00f;
     private static float maxSpeed = 0.01f;

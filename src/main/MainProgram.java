@@ -106,6 +106,7 @@ public class MainProgram {
     private Texture vBlurTex = null;
     private Texture finalTex = null;
     private Texture noiseTex = null;
+    private Texture rgNoiseTex = null;
     private Texture chessTex = null;
 
 	////// other
@@ -394,6 +395,7 @@ public class MainProgram {
 
         depthFB.bind();
         depthFB.clearColor();
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         
         glEnable(GL_BLEND);
         glDisable(GL_DEPTH_TEST);
@@ -462,6 +464,7 @@ public class MainProgram {
         finalSP.setUniform("depthTex", depthTex);
         finalSP.setUniform("blurTex", vBlurTex);
         finalSP.setUniform("bgTex", cubeFinalTex);
+        finalSP.setUniform("rgNoiseTex", rgNoiseTex);
 //      finalSP.setUniform("tex", hBlurTex);
 //      finalSP.setUniform("dir", 0);
 //      finalFB.bind();
@@ -714,14 +717,20 @@ public class MainProgram {
         
         
         // cube texture
+//        cubeTex = Texture.generateTexture("./res/skybox.jpg", textureUnit++);
+//        cubeTex = Texture.generateTexture("./res/cube1.png", textureUnit++);
         cubeTex = Texture.generateTexture("./res/chessboardCube.png", textureUnit++);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
         
-        // noise texture
+        // noise textures
         noiseTex = Texture.generateTexture("./res/perlin.png", textureUnit++);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        rgNoiseTex = Texture.generateTexture("./res/rgNoise.png", textureUnit++);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         

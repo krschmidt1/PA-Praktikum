@@ -97,9 +97,9 @@ kernel void move(
 	
 	if(lifetime <= 0.0f) 
 	{
-		lifetimes[id * 2]     = 0.0f;
+	//	lifetimes[id * 2]     = 0.0f;
 		lifetimes[id * 2 + 1] = 0.0f;
-		return;
+	//	return;
 	}
 	
 	const float baseSpeed     = 0.001f;
