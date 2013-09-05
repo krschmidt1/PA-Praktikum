@@ -21,6 +21,7 @@ import pa.cl.CLUtil.PlatformDeviceFilter;
 import pa.cl.CLUtil.PlatformDevicePair;
 import pa.util.IOUtil;
 import pa.util.SizeOf;
+import pa.util.math.MathUtil;
 
 import opengl.GL;
 import static opengl.GL.*;
@@ -106,8 +107,9 @@ public class MainProgram {
     private Texture vBlurTex = null;
     private Texture finalTex = null;
     private Texture noiseTex = null;
-    private Texture rgNoiseTex = null;
     private Texture chessTex = null;
+    private Texture rgNoiseTex = null;
+    private Texture cubeNormalsTex = null;
 
 	////// other
 	private long lastTimestamp   = System.currentTimeMillis();
@@ -432,8 +434,13 @@ public class MainProgram {
         cubeSP.setUniform("model", modelMat);
         cubeSP.setUniform("viewProj", viewProj);
         cubeSP.setUniform("camPos", cam.getCamPos());
-        cubeSP.setUniform("text", cubeTex);
-        cubeSP.setUniform3fv("lightPos", bufferLPA);
+        cubeSP.setUniform("tex", cubeTex);
+        cubeSP.setUniform("normalTex", cubeNormalsTex);
+        FloatBuffer lightBuffer = BufferUtils.createFloatBuffer(12 * 3);
+        for(int i = 0; i < 12; i++) {
+        	lightBuffer.put(i, bufferLPA.get(i));
+        }
+        cubeSP.setUniform3fv("lightPos", lightBuffer);
         
         cubeFB.bind();
         cubeFB.clearColor();
@@ -561,6 +568,11 @@ public class MainProgram {
             }
         }
         cam.move(moveSpeed * moveDir.z, moveSpeed * moveDir.x, moveSpeed * moveDir.y);
+        if(!debug) {
+        	cam.getCamPos().x = MathUtil.clamp(cam.getCamPos().x, -3.0f, 3.0f);
+        	cam.getCamPos().y = MathUtil.clamp(cam.getCamPos().y, -3.0f, 3.0f);
+        	cam.getCamPos().z = MathUtil.clamp(cam.getCamPos().z, -3.0f, 3.0f);
+        }
 
         
         // LMB PRESSED HANDLING
@@ -726,6 +738,13 @@ public class MainProgram {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        
+        cubeNormalsTex = Texture.generateTexture("./res/cubeNormals.png", textureUnit++);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        
         
         // noise textures
         noiseTex = Texture.generateTexture("./res/perlin.png", textureUnit++);
