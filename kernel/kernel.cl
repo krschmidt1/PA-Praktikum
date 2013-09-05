@@ -34,7 +34,7 @@ void reorder(
 }
 
 // calculates the 4 closes LPAs and returns one randomly
-const float3 closestLPAdirection(
+float3 closestLPAdirection(
 	global float* lpas, 
 	const int numLPA, 
 	const float3 position, 
@@ -97,15 +97,12 @@ kernel void move(
 	
 	if(lifetime <= 0.0f) 
 	{
-	//	lifetimes[id * 2]     = 0.0f;
 		lifetimes[id * 2 + 1] = 0.0f;
-	//	return;
 	}
 	
 	const float baseSpeed     = 0.001f;
 	const float speed = baseSpeed * ((float)dTime);
 
-	const float  alive    = lifetimes[id * 2 + 1];
 	const float3 position = (float3)(positions [id * 3], positions [id * 3 + 1], positions [id * 3 + 2]);
 	const float3 velocity = (float3)(velocities[id * 3], velocities[id * 3 + 1], velocities[id * 3 + 2]);
 	

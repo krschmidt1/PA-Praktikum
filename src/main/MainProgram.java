@@ -107,9 +107,10 @@ public class MainProgram {
     private Texture vBlurTex = null;
     private Texture finalTex = null;
     private Texture noiseTex = null;
-    private Texture chessTex = null;
     private Texture rgNoiseTex = null;
     private Texture cubeNormalsTex = null;
+    @SuppressWarnings("unused")
+	private Texture chessTex = null;
 
 	////// other
 	private long lastTimestamp   = System.currentTimeMillis();
@@ -132,7 +133,7 @@ public class MainProgram {
 	private Vector4f pulseDir  = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
 	private Vector4f pulsePos  = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
 
-	private int textureToDraw = -1; 
+	private int textureToDraw = -1;
 	
 	/**
 	 * Ctor.
@@ -504,7 +505,7 @@ public class MainProgram {
             
             glLineWidth(10.0f);
             glBindVertexArray(pulseVAID);
-            opengl.GL.glDrawArrays(GL11.GL_LINES, 0, 2);
+            opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, 2);
         }
 
         // present screen
@@ -591,6 +592,12 @@ public class MainProgram {
         			System.out.println("Mouse difference: (" + dX + ", " + dY + ")");
         		
         		if(dX * dX + dY * dY != 0.0f) {
+        			FloatBuffer pulseBuffer = BufferUtils.createFloatBuffer(6);
+        			pulseBuffer.put(new float[]{pulsePos.x, pulsePos.y, pulsePos.z, pulsePos.x + pulseDir.x, pulsePos.y + pulseDir.y, pulsePos.z + pulseDir.z});
+        			pulseBuffer.rewind();
+        	        glBindBuffer(GL_ARRAY_BUFFER, bufferObjectPulse);
+        	        glBufferData(GL_ARRAY_BUFFER, pulseBuffer, GL_STATIC_DRAW);
+        			
         			Matrix4f invViewProj = (Matrix4f)opengl.util.Util.mul(null, cam.getProjection(), cam.getView()).invert();
         			pulse = true;
         		
@@ -609,9 +616,6 @@ public class MainProgram {
         			pulsePos.y = pulsePos.y * 2.0f / HEIGHT - 1.0f;
         			// retransform pulsePos to 3D
         			Matrix4f.transform(invViewProj, pulsePos, pulsePos);
-        			
-        			FloatBuffer pulseBuffer = BufferUtils.createFloatBuffer(6);
-        			pulseBuffer.put(new float[]{pulsePos.x, pulsePos.y, pulsePos.z, pulsePos.x + pulseDir.x, pulsePos.y + pulseDir.y, pulsePos.z + pulseDir.z});
         		}
         	}
         }
@@ -774,6 +778,7 @@ public class MainProgram {
 	 */
 	private boolean initCL() {
         CLUtil.createCL();
+        
         
         PlatformDevicePair pair = null;
         try {
