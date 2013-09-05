@@ -25,7 +25,8 @@ void main(void) {
 		PixelColor = PixelColor + blur;
 	//}else {
 	//	PixelColor = fireColor;
-	//	PixelColor = mix(PixelColor, texture(bgTex, bgTexCoord), clamp(1-(PixelColor.x+PixelColor.x)/5, 0, 1));
+		//PixelColor = mix(PixelColor, texture(bgTex, bgTexCoord), clamp(1-(PixelColor.x+PixelColor.x)/5, 0, 1));
+		//PixelColor = mix(PixelColor, texture(bgTex, texCoord), clamp(1-PixelColor.x, 0, 1));
 	//}
 	//PixelColor = mix(PixelColor, texture(bgTex, bgTexCoord), clamp(1-(PixelColor.x+PixelColor.x)/5, 0, 1));
 

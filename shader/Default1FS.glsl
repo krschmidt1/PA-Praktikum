@@ -35,7 +35,8 @@ void main(void)
 	//if(FragmentPos.x > 0.0f) {
 		PixelColor = noise * PixelColor;
 	//}else {
-	//	PixelColor = 0.5f * PixelColor;
+	//	PixelColor = vec4(1.0f*(1.0f-r), 0.0f, 0.0f, 0.0f) ;//0.5f * PixelColor;
+	//	if(r > 0.01) discard;
 	//}
 
 	//if(alive == 0.0f) PixelColor = vec4(0.1*(1-r), 0.1*(1-r), 0.1*(1-r), r);
