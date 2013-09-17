@@ -21,6 +21,7 @@ import pa.cl.CLUtil.PlatformDeviceFilter;
 import pa.cl.CLUtil.PlatformDevicePair;
 import pa.util.IOUtil;
 import pa.util.SizeOf;
+import pa.util.math.MathUtil;
 
 import opengl.GL;
 import static opengl.GL.*;
@@ -31,7 +32,6 @@ import org.lwjgl.LWJGLException;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.util.vector.Matrix4f;
-import org.lwjgl.util.vector.Vector2f;
 import org.lwjgl.util.vector.Vector3f;
 import org.lwjgl.util.vector.Vector4f;
 
@@ -108,7 +108,9 @@ public class MainProgram {
     private Texture finalTex = null;
     private Texture noiseTex = null;
     private Texture rgNoiseTex = null;
-    private Texture chessTex = null;
+    private Texture cubeNormalsTex = null;
+    @SuppressWarnings("unused")
+	private Texture chessTex = null;
 
 	////// other
 	private long lastTimestamp   = System.currentTimeMillis();
@@ -129,7 +131,9 @@ public class MainProgram {
 	private boolean  pulse     = false;
 	private boolean  showPulse = false;
 	private Vector4f pulseDir  = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
-	private Vector4f pulsePos  = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f); 
+	private Vector4f pulsePos  = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
+
+	private int textureToDraw = -1;
 	
 	/**
 	 * Ctor.
@@ -401,40 +405,20 @@ public class MainProgram {
         glEnable(GL_BLEND);
         glDisable(GL_DEPTH_TEST);
         
+        // draw particles
         glBindVertexArray(vertexArrayID);
         opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, elements);
-//      glowSP.use();
-//      glowSP.setUniform("model", modelMat);
-//      glowSP.setUniform("viewProj", opengl.util.Util.mul(null, cam.getProjection(), cam.getView()));
-//      glowSP.setUniform("camPos", cam.getCamPos());
-//      glowSP.setUniform("depthTex", depthTex);
-//      glowSP.setUniform("TexelSize", new Vector3f(1.0f/WIDTH, 1.0f/HEIGHT, 0.0f));
-//      glowSP.setUniform("Sample0", depthTex);
-//      glowSP.setUniform("Orientation", 0);
-//      glowSP.setUniform("BlurAmount", 10);
-//      glowSP.setUniform("BlurScale", 2.0f);
-//      glowSP.setUniform("BlurStrength", 0.4f);
-//
-//      glowFB.bind();
-//      glowFB.clearColor();
         
-        
+        // blur horizontal
         blurSP.use();
         blurSP.setUniform("tex", depthTex);
         blurSP.setUniform("dir", 1);
         hBlurFB.bind();
         hBlurFB.clearColor();
         
-//      glEnable(GL_BLEND);
-//      glDisable(GL_DEPTH_TEST);
-//      
-//      glBindVertexArray(vertexArrayID);
-//      opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, elements);
-        
         screenQuad.draw();
 
-//        glowSP.setUniform("Sample0", glowTex);
-//        glowSP.setUniform("Orientation", 1);
+        // blur vertical
         blurSP.setUniform("tex", hBlurTex);
         blurSP.setUniform("dir", 0);
         vBlurFB.bind();
@@ -451,8 +435,13 @@ public class MainProgram {
         cubeSP.setUniform("model", modelMat);
         cubeSP.setUniform("viewProj", viewProj);
         cubeSP.setUniform("camPos", cam.getCamPos());
-        cubeSP.setUniform("text", cubeTex);
-        cubeSP.setUniform3fv("lightPos", bufferLPA);
+        cubeSP.setUniform("tex", cubeTex);
+        cubeSP.setUniform("normalTex", cubeNormalsTex);
+        FloatBuffer lightBuffer = BufferUtils.createFloatBuffer(12 * 3);
+        for(int i = 0; i < 12; i++) {
+        	lightBuffer.put(i, bufferLPA.get(i));
+        }
+        cubeSP.setUniform3fv("lightPos", lightBuffer);
         
         cubeFB.bind();
         cubeFB.clearColor();
@@ -461,33 +450,38 @@ public class MainProgram {
         
         cube.draw();
         
-        
-        finalSP.use();
-        finalSP.setUniform("depthTex", depthTex);
-        finalSP.setUniform("blurTex", vBlurTex);
-        finalSP.setUniform("bgTex", cubeFinalTex);
-        finalSP.setUniform("rgNoiseTex", rgNoiseTex);
-//      finalSP.setUniform("tex", hBlurTex);
-//      finalSP.setUniform("dir", 0);
-//      finalFB.bind();
-//      finalFB.clearColor();
+
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+       	screenQuadSP.use();
+       	Texture tex = null;
+       	switch(textureToDraw) {
+       		case 1: tex = depthTex; break;
+       		case 2: tex = vBlurTex; break;
+       		case 3: tex = hBlurTex; break;
+       		case 4: tex = cubeTex; break;
+       		case 5: tex = cubeFinalTex; break;
+       		case 6: tex = rgNoiseTex; break;
+       		case 7: tex = null; break;
+       		case 8: tex = null; break;
+       		case 9: tex = null; break;
+       		case 0: tex = null; break;
+       		default: tex = null;
+       	}
+       	
+       	if(tex == null) {
+	        finalSP.use();
+	        finalSP.setUniform("depthTex", depthTex);
+	        finalSP.setUniform("blurTex", vBlurTex);
+	        finalSP.setUniform("bgTex", cubeFinalTex);
+	        finalSP.setUniform("rgNoiseTex", rgNoiseTex);
+       	} else {
+       		screenQuadSP.setUniform("image", tex);
+       	}
+       	
         screenQuad.draw();
         
-//        glDisable(GL_BLEND);
-//        glEnable(GL_DEPTH_TEST);
-        
-        
-        
-      // draw texture on screenquad
-//        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-//      screenQuadSP.use();        
-//      screenQuadSP.setUniform("image", vBlurTex);
-////        screenQuadSP.setUniform("image2", glowTex);
-//      screenQuad.draw();
-        
         // show low pressure areas with a blue tone
-
         if(showLPA) {
         	lpaPulseSP.use();
         	lpaPulseSP.setUniform("viewProj", viewProj);
@@ -511,7 +505,7 @@ public class MainProgram {
             
             glLineWidth(10.0f);
             glBindVertexArray(pulseVAID);
-            opengl.GL.glDrawArrays(GL11.GL_LINES, 0, 2);
+            opengl.GL.glDrawArrays(opengl.GL.GL_POINTS, 0, 2);
         }
 
         // present screen
@@ -560,10 +554,26 @@ public class MainProgram {
                     case Keyboard.KEY_B: showPulse = !showPulse;
                     					 if(debug) System.out.println((showPulse?"V":"Not v") + "iewing pulse!");
                     					 	break;
+                    case Keyboard.KEY_CIRCUMFLEX: textureToDraw = -1; break;
+                    case Keyboard.KEY_1: textureToDraw = textureToDraw == 1?-1:1; break;
+                    case Keyboard.KEY_2: textureToDraw = textureToDraw == 2?-1:2; break;
+                    case Keyboard.KEY_3: textureToDraw = textureToDraw == 3?-1:3; break;
+                    case Keyboard.KEY_4: textureToDraw = textureToDraw == 4?-1:4; break;
+                    case Keyboard.KEY_5: textureToDraw = textureToDraw == 5?-1:5; break;
+                    case Keyboard.KEY_6: textureToDraw = textureToDraw == 6?-1:6; break;
+                    case Keyboard.KEY_7: textureToDraw = textureToDraw == 7?-1:7; break;
+                    case Keyboard.KEY_8: textureToDraw = textureToDraw == 8?-1:8; break;
+                    case Keyboard.KEY_9: textureToDraw = textureToDraw == 9?-1:9; break;
+                    case Keyboard.KEY_0: textureToDraw = textureToDraw == 0?-1:0; break;
                 }
             }
         }
         cam.move(moveSpeed * moveDir.z, moveSpeed * moveDir.x, moveSpeed * moveDir.y);
+        if(!debug) {
+        	cam.getCamPos().x = MathUtil.clamp(cam.getCamPos().x, -3.0f, 3.0f);
+        	cam.getCamPos().y = MathUtil.clamp(cam.getCamPos().y, -3.0f, 3.0f);
+        	cam.getCamPos().z = MathUtil.clamp(cam.getCamPos().z, -3.0f, 3.0f);
+        }
 
         
         // LMB PRESSED HANDLING
@@ -582,6 +592,12 @@ public class MainProgram {
         			System.out.println("Mouse difference: (" + dX + ", " + dY + ")");
         		
         		if(dX * dX + dY * dY != 0.0f) {
+        			FloatBuffer pulseBuffer = BufferUtils.createFloatBuffer(6);
+        			pulseBuffer.put(new float[]{pulsePos.x, pulsePos.y, pulsePos.z, pulsePos.x + pulseDir.x, pulsePos.y + pulseDir.y, pulsePos.z + pulseDir.z});
+        			pulseBuffer.rewind();
+        	        glBindBuffer(GL_ARRAY_BUFFER, bufferObjectPulse);
+        	        glBufferData(GL_ARRAY_BUFFER, pulseBuffer, GL_STATIC_DRAW);
+        			
         			Matrix4f invViewProj = (Matrix4f)opengl.util.Util.mul(null, cam.getProjection(), cam.getView()).invert();
         			pulse = true;
         		
@@ -727,6 +743,13 @@ public class MainProgram {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
         
+        cubeNormalsTex = Texture.generateTexture("./res/cubeNormals.png", textureUnit++);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        
+        
         // noise textures
         noiseTex = Texture.generateTexture("./res/perlin.png", textureUnit++);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -755,6 +778,7 @@ public class MainProgram {
 	 */
 	private boolean initCL() {
         CLUtil.createCL();
+        
         
         PlatformDevicePair pair = null;
         try {

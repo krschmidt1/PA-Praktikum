@@ -76,25 +76,25 @@ public class GeometryFactory {
     public static Geometry createTexturedCube() {
     	float size = 3.0f;
     	float[] cubeVertices  = {
-       		 size,  size,  size,	-1.0f, -1.0f, -1.0f,	 0.5f, 1.0f/3.0f,  // front top right		0
-       		-size,  size,  size, 	 0.0f, -1.0f, -1.0f,	0.25f, 1.0f/3.0f,  // front top left		1
-       		 size, -size,  size,	-1.0f,  0.0f, -1.0f,	 0.5f, 2.0f/3.0f,  // front bottom right	2
-       		-size, -size,  size, 	 0.0f,  0.0f, -1.0f,	0.25f, 2.0f/3.0f,  // front bottom left	3
+       		 size,  size,  size,	1.0f, 1.0f, 1.0f,	 	 0.5f, 1.0f/3.0f,  // front top right		0
+       		-size,  size,  size, 	0.0f, 1.0f, 1.0f,		0.25f, 1.0f/3.0f,  // front top left		1
+       		 size, -size,  size,	1.0f, 0.0f, 1.0f,		 0.5f, 2.0f/3.0f,  // front bottom right	2
+       		-size, -size,  size, 	0.0f, 0.0f, 1.0f,		0.25f, 2.0f/3.0f,  // front bottom left		3
        		
-       		 size,  size, -size,	-1.0f, -1.0f, 0.0f,		0.75f, 1.0f/3.0f,  // back top right		4
-       		-size,  size, -size,	 0.0f, -1.0f, 0.0f,		 1.0f, 1.0f/3.0f,  // back top left		5
-       		 size, -size, -size,	-1.0f,  0.0f, 0.0f,		0.75f, 2.0f/3.0f,  // back bottom right	6
-       		-size, -size, -size,	 0.0f,  0.0f, 0.0f,		 1.0f, 2.0f/3.0f,  // back bottom left	7
+       		 size,  size, -size,	1.0f, 1.0f, 0.0f,		0.75f, 1.0f/3.0f,  // back top right		4
+       		-size,  size, -size,	0.0f, 1.0f, 0.0f,		 1.0f, 1.0f/3.0f,  // back top left			5
+       		 size, -size, -size,	1.0f, 0.0f, 0.0f,		0.75f, 2.0f/3.0f,  // back bottom right		6
+       		-size, -size, -size,	0.0f, 0.0f, 0.0f,		 1.0f, 2.0f/3.0f,  // back bottom left		7
        		
-       		 size,  size, -size,	-1.0f, -1.0f, 0.0f,		 0.5f,      0.0f,  // back top right		8
-      		-size,  size, -size,	 0.0f, -1.0f, 0.0f,		0.25f,      0.0f,  // back top left		9
-      		 size, -size, -size,	-1.0f,  0.0f, 0.0f,		 0.5f,      1.0f,  // back bottom right	10
-      		-size, -size, -size,	 0.0f,  0.0f, 0.0f,		0.25f,      1.0f,  // back bottom left	11
+       		 size,  size, -size,	1.0f, 1.0f, 0.0f,		 0.5f,      0.0f,  // back top right		8
+      		-size,  size, -size,	0.0f, 1.0f, 0.0f,		0.25f,      0.0f,  // back top left			9
+      		 size, -size, -size,	1.0f, 0.0f, 0.0f,		 0.5f,      1.0f,  // back bottom right		10
+      		-size, -size, -size,	0.0f, 0.0f, 0.0f,		0.25f,      1.0f,  // back bottom left		11
       		
-//     		 0.5f,  0.5f, -0.5f,	-1.0f, -1.0f, 0.0f,		*.25f, 1.0f/3.0f,  // back top right		12
-     		-size,  size, -size,	 0.0f, -1.0f, 0.0f,		 0.0f, 1.0f/3.0f,  // back top left		13 12!
-//     		 0.5f, -0.5f, -0.5f,	-1.0f,  0.0f, 0.0f,		*.75f, 1.0f/3.0f,  // back bottom right	14
-     		-size, -size, -size,	 0.0f,  0.0f, 0.0f,		 0.0f, 2.0f/3.0f   // back bottom left	15 13!
+//     		 0.5f,  0.5f, -0.5f,	1.0f, 1.0f, 0.0f,		*.25f, 1.0f/3.0f,  // back top right		12
+     		-size,  size, -size,	0.0f, 1.0f, 0.0f,		 0.0f, 1.0f/3.0f,  // back top left			13 12!
+//     		 0.5f, -0.5f, -0.5f,	1.0f, 0.0f, 0.0f,		*.75f, 1.0f/3.0f,  // back bottom right		14
+     		-size, -size, -size,	0.0f, 0.0f, 0.0f,		 0.0f, 2.0f/3.0f   // back bottom left		15 13!
        };
        
 //       int[] cubeIndicesO = {
