@@ -14,3 +14,5 @@ lwjgl*/*
 *.log
 Documentation/.~lock.Documentation_P1.odt#
 Screenshots/.~lock.Präsentation.odp#
+Screenshots/Thumbs.db
+*Thumbs.db
